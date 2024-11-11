@@ -1,8 +1,10 @@
+from typing import List, Tuple
+
 class BlokusPiece:
-    def __init__(self, shape, size):
+    def __init__(self, shape: List[Tuple[int, int]], size: Tuple[int, int], idx=None):
         self.shape = shape
         self.size = size
-        
+        self.idx = idx
     def print(self):
         N = 3
         max_x = max(pos[0] for pos in self.shape)
@@ -18,7 +20,7 @@ class BlokusPiece:
             print(''.join(row))
         print()
 
-class BlokusPieceGroup:
+class BlokusPieceTransformations:
     @staticmethod
     def __get_any_piece(id):
         match id:
@@ -75,7 +77,7 @@ class BlokusPieceGroup:
     @staticmethod
     def __rotate_right_shape(piece):
         (h, w) = piece.size
-        new_piece = BlokusPiece([(j, h - i - 1) for (i, j) in piece.shape], (w, h))
+        new_piece = BlokusPiece([(j, h - i - 1) for (i, j) in piece.shape], size=(w, h))
         return new_piece
     
     @staticmethod
@@ -86,12 +88,12 @@ class BlokusPieceGroup:
     
     def __init__(self, id):
         self.id = id
-        self.pieces = [self.__get_any_piece(id)]
+        self.transformations = [self.__get_any_piece(id)]
         for i in range(3):
-            self.pieces.append(self.__rotate_right_shape(self.pieces[i]))
+            self.transformations.append(self.__rotate_right_shape(self.transformations[i]))
 
         for i in range(4):
-            self.pieces.append(self.__reflect_shape(self.pieces[i]))
+            self.transformations.append(self.__reflect_shape(self.transformations[i]))
 
-        self.piece_list = list(set([(tuple(sorted(piece.shape, key=lambda x: (x[0], x[1]))), piece.size) for piece in self.pieces]))
-        self.pieces = [BlokusPiece(list(shape), size) for shape, size in self.piece_list]
+        self.transformation_list = list(set([(tuple(sorted(piece.shape, key=lambda x: (x[0], x[1]))), piece.size) for piece in self.transformations]))
+        self.transformations = [BlokusPiece(list(shape), size) for shape, size in self.transformation_list]
