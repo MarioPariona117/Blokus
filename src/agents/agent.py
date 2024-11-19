@@ -10,12 +10,13 @@ class Agent:
         return action
     
 def random_policy(env):
-    return random.choice(env.possible_actions_efficient(env.current_player))
+    actions = env.possible_actions_efficient(env.current_player)
+    if not actions:
+        return None
+    return random.choice(actions)
 
 def maximize_policy(env, action_value):
-    actions = env.action_space.all()
+    actions = env.possible_actions_efficient(env.current_player)
+    if not actions:
+        return None
     return max(actions, key=lambda action: action_value(action))
-
-# def action_to_int(action):
-#     # Placeholder function, replace with actual logic
-#     return int(action)

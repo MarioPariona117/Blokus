@@ -74,5 +74,5 @@ pieces = {id: BlokusPieceTransformations(id=id) for id in PIECE_IDS}
 j = 0
 for id, piece in pieces.items():
     for i, transformation in enumerate(piece.transformations):
-        save_piece_image(transformation, folder_path, f'{j:03d}_{id}_transformation_{i}.png')
+        save_piece_image(transformation, folder_path, f'{j:03d}_{id}_transformation_{i}_{piece.aux[i]}.png')
         j += 1
