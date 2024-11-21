@@ -44,6 +44,7 @@ class BlokusEnv(gym.Env):
         self.total_efficient = 0
         self.total_inefficient = 0
         self.total_precomputed = 0
+        self.freq = [0 for _ in range(130)]
         ##################################### PIECES #####################################
         self.pieces = {id: BlokusPieceTransformations(id=id) for id in BlokusEnv.PIECE_IDS}
 
@@ -61,14 +62,12 @@ class BlokusEnv(gym.Env):
         self.neighborhood_to_encoded_actions = None
         if neighborhood is not None:
             self.neighborhood_to_encoded_actions = np.load(f"{neighborhood}/compute_actions.pkl", allow_pickle=True)
-            # print("Loaded neighborhood_to_encoded_actions")
+            print("Neighborhood to encoded actions loaded")
             self.neighbor_pos = np.load(f"{neighborhood}/neighbor_pos.pkl", allow_pickle=True)
-            # print("Loaded neighbor_pos")
             def get_neighborhood(expander, player):
                 """
                 Calculate the neighborhood bitmask for a given expander position on the board for a specific player.
                 Args:
-                    board (list): The game board represented as a 2D list.
                     expander (tuple): The coordinates (x, y) of the expander on the board.
                     player (int): The player index for which the neighborhood is being calculated.
                 Returns:
@@ -80,29 +79,19 @@ class BlokusEnv(gym.Env):
                 """
                 neighborhood = 0
                 x, y = expander
-                # print("Expander:", expander)
-                # print(self.agents_info[player].expander_squares[expander])
                 dx, dy = self.agents_info[player].expander_squares[expander][0] # first direction
+                if (not self.legal_cell((x + dx, y), player)) and (not self.legal_cell((x, y + dy), player)):
+                    return 0
                 for idx, (i, j) in enumerate(self.neighbor_pos):
                     neighbor = (x + dx * i, y + dy * j)
                     if self.legal_cell(neighbor, player):
                         neighborhood |= (1 << idx)
-                    # else:
-                    #     print("Locked square:", neighbor)
-
                 return neighborhood
             
             self.get_neighborhood = get_neighborhood
             def get_actions_from_neighborhood(neighborhood: int) -> List[int]:
                 actions = self.neighborhood_to_encoded_actions[neighborhood]
-                # print("Actions:", actions)
                 actions = list(map(decode, actions))
-
-                # there are only 5 actions that hasn't been considered:
-                #  for all of them, if it can be put: (cell is empty and action before than that can be put, then put it)
-                # add it to actions
-                # TODO: implement this
-                # print("TODO!!")
                 return actions
             self.get_actions_from_neighborhood = get_actions_from_neighborhood
 
@@ -233,8 +222,15 @@ class BlokusEnv(gym.Env):
         return ret
     
     def place_piece(self, action_parameters, player, place=True):
-        """Place a piece on the board, and update game state."""
-        # row, col, piece_id, piece_transformation = action
+        """
+        Place a piece on the board and update the game state.
+        Args:
+            action_parameters (tuple): A tuple containing the row, column, piece ID, and piece transformation.
+            player (int): The ID of the player placing the piece.
+            place (bool, optional): If True, the piece will be placed on the board. If False, only checks if the piece can be placed. Defaults to True.
+        Returns:
+            bool: True if the piece was successfully placed or can be placed, False otherwise.
+        """
         row, col, piece_id, piece_transformation = action_parameters
 
         if not piece_id in self.agents_info[player].available_pieces:
@@ -244,14 +240,10 @@ class BlokusEnv(gym.Env):
         can_place = False
         for i, j in piece_shape:
             board_row, board_col = i + row, j + col
-            if board_row < 0 or board_row >= self.board_size or board_col < 0 or board_col >= self.board_size:
-                return False #### OUTSIDE THE BOARD ####
+            if not self.legal_cell((board_row, board_col), player):
+                return False
             if (board_row, board_col) in self.agents_info[player].expander_squares:
                 can_place = True #### TOUCHES A CORNER PIECE ####
-            if self.board[board_row, board_col] != 0:
-                return False #### IS COLOURED ALREADY ####
-            if (board_row, board_col) in self.agents_info[player].locked_squares:
-                return False #### TOUCH OWN COLOR BY SIDE ####
         if not can_place:
             return False
         
@@ -263,6 +255,11 @@ class BlokusEnv(gym.Env):
             
         self.agents_info[player].available_pieces.remove(piece_id)
 
+        self.update_attributes(player)
+        
+        return True
+
+    def update_attributes(self, player):
         ### UPDATE OTHER ATTRIBUTES TO MAKE IT FASTER ###
         ### EXAMPLE: LOCKED/EXPANDER SQUARES ###
         self.agents_info[player].started = True
@@ -272,11 +269,15 @@ class BlokusEnv(gym.Env):
                 self.agents_info[i].expander_squares = self.get_expander_squares(i)
             elif not self.legal_cell(list(self.agents_info[i].expander_squares.keys())[0], i):
                 self.agents_info[i].expander_squares = []
-        return True
-
+            
     def possible_actions(self, player: int) -> list[Tuple[int, int, str, int]]:
         """Generate all possible moves for a player by checking each piece and transformation."""
-        return self.possible_actions_precomputed(player)
+        # start_time = time.time()
+        # actions = self.possible_actions_precomputed(player)
+        # end_time = time.time()
+        # self.precomputed_time = end_time - start_time
+        # self.log()
+        # return actions
         if self.mode == 'testing':
             start_time = time.time()
             efficient = self.possible_actions_efficient(player)
@@ -347,6 +348,7 @@ class BlokusEnv(gym.Env):
         actions = set()
         for expander in self.agents_info[player].expander_squares:
             actions.update(self.possible_actions_precomputed_expander_square(expander, player))
+        
         return sorted(list(actions))
     
     def log(self):
@@ -360,9 +362,16 @@ class BlokusEnv(gym.Env):
     def possible_actions_precomputed_expander_square(self, expander, player: int) -> ActType:
         """Generate all possible moves for a player by checking each piece and transformation using precomputed data for a single expander square."""
         neighborhood = self.get_neighborhood(expander, player)
-        # print("neighborhood:", neighborhood)
+        if neighborhood == 0:
+            self.freq[1] += 1
+            if "1" in self.agents_info[player].available_pieces:
+                return [self._tuple_to_action((expander[0], expander[1], "1", 0))]
+            else:
+                return []
+            
         dx, dy = self.agents_info[player].expander_squares[expander][0]
         actions = self.get_actions_from_neighborhood(neighborhood)
+        # print("neighborhood:", neighborhood, "actions:", len(actions))
         if (-2, 0, 16) in actions:
             if self.legal_cell((expander[0] - dx * 2, expander[1]), player):
                 actions.append((-2, 0, 68))
@@ -379,8 +388,9 @@ class BlokusEnv(gym.Env):
             actions.append((0, 0, 37))
         if self.legal_cell((expander[0], expander[1] + dy * 4), player) and (0, 0, 9) in actions:
             actions.append((0, 0, 36))
+        self.freq[len(actions)] += 1
+
         board_actions = []
-        # print(dx, dy, actions)
         for row, col, piece in actions:
             piece_id, piece_transformation = self._get_piece_info[piece]
             h, w = self.pieces[piece_id].transformations[piece_transformation].size
@@ -396,9 +406,11 @@ class BlokusEnv(gym.Env):
             else:
                 board_col = col + expander[1]
             board_transformation = self.pieces[piece_id].indexes[original_piece_transform]
+    
             if piece_id in self.agents_info[player].available_pieces:
                 # print("Piece:", piece_id, "Transformation:", board_transformation, "Row:", board_row, "Col:", board_col)
                 board_actions.append(self._tuple_to_action((int(board_row), int(board_col), piece_id, int(board_transformation))))
+        # print(dx, dy, actions)
         return board_actions
     
     def step(self, action: ActType) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
