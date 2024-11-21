@@ -22,7 +22,7 @@ class BlokusEnvAgentInfo:
     def __init__(self, player_id, available_pieces:List[str]):
         self.player_id = player_id
         self.available_pieces = set(list(available_pieces))
-        self.expander_squares = []
+        self.expander_squares = {}
         self.locked_squares = []
         self.started = False
 
@@ -79,7 +79,7 @@ class BlokusEnv(gym.Env):
                 """
                 neighborhood = 0
                 x, y = expander
-                dx, dy = self.agents_info[player].expander_squares[expander][0] # first direction
+                dx, dy = self.agents_info[player].expander_squares[expander] # first direction
                 if (not self.legal_cell((x + dx, y), player)) and (not self.legal_cell((x, y + dy), player)):
                     return 0
                 for idx, (i, j) in enumerate(self.neighbor_pos):
@@ -154,10 +154,10 @@ class BlokusEnv(gym.Env):
         self.agents_info = [0] + [BlokusEnvAgentInfo(player_id=i, available_pieces=self.pieces.keys()) for i in range(1, self.num_players + 1)]
 
         if self.num_players == 1:
-            self.agents_info[1].expander_squares = {(0, 0):[(1, 1)]}
+            self.agents_info[1].expander_squares = {(0, 0):(1, 1)}
         elif self.num_players == 2:
-            self.agents_info[1].expander_squares = {(0, 0):[(1, 1)]}
-            self.agents_info[2].expander_squares = {(self.board_size - 1, self.board_size - 1):[(-1, -1)]}
+            self.agents_info[1].expander_squares = {(0, 0):(1, 1)}
+            self.agents_info[2].expander_squares = {(self.board_size - 1, self.board_size - 1):(-1, -1)}
         else:
             raise ValueError("Only 1-2 player is supported for now :3")
         
@@ -205,6 +205,16 @@ class BlokusEnv(gym.Env):
     
     def get_expander_squares(self, player):
         """Return expander squares for a player, where placement is encouraged based on diagonal cells."""
+        if not self.agents_info[player].started:
+            if not self.legal_cell(list(self.agents_info[player].expander_squares.keys())[0], player):
+                self.agents_info[player].expander_squares = {}
+            else:
+                if player == 1:
+                    return {(0, 0):(1, 1)}
+                elif player == 2:
+                    return {(self.board_size - 1, self.board_size - 1):(-1, -1)}
+                else:
+                    raise ValueError("Only 1-2 player is supported for now :3")
         ret = {}
         for i in range(self.board_size):
             for j in range(self.board_size):
@@ -216,12 +226,13 @@ class BlokusEnv(gym.Env):
                     if min(i + x, j + y) >= 0 and max(i + x, j + y) < self.board_size and self.board[i + x, j + y] == player:
                         not_add = True
                 if not not_add and direction and self.board[i, j] == 0:
-                    if (i, j) not in ret:
-                        ret[i, j] = []
-                    ret[i, j].append(direction)
+                    ret[i, j] = direction
+
+        
+
         return ret
     
-    def place_piece(self, action_parameters, player, place=True):
+    def place_piece(self, action_parameters, player, place=True, check=True):
         """
         Place a piece on the board and update the game state.
         Args:
@@ -232,52 +243,98 @@ class BlokusEnv(gym.Env):
             bool: True if the piece was successfully placed or can be placed, False otherwise.
         """
         row, col, piece_id, piece_transformation = action_parameters
+        piece = self.pieces[piece_id].transformations[piece_transformation]
+        if check:
+            if not piece.id in self.agents_info[player].available_pieces:
+                return False #### PIECE ALREADY USED ####
 
-        if not piece_id in self.agents_info[player].available_pieces:
-            return False #### PIECE ALREADY USED ####
-        piece_shape = self.pieces[piece_id].transformations[piece_transformation].shape
-
-        can_place = False
-        for i, j in piece_shape:
-            board_row, board_col = i + row, j + col
-            if not self.legal_cell((board_row, board_col), player):
-                return False
-            if (board_row, board_col) in self.agents_info[player].expander_squares:
-                can_place = True #### TOUCHES A CORNER PIECE ####
+            can_place = False
+            for i, j in piece.shape:
+                board_row, board_col = i + row, j + col
+                if not self.legal_cell((board_row, board_col), player):
+                    return False
+                if (board_row, board_col) in self.agents_info[player].expander_squares:
+                    can_place = True #### TOUCHES A CORNER PIECE ####
+        else:
+            if not place:
+                return True
         if not can_place:
             return False
         
         if not place:
             return True
         
-        for i, j in piece_shape:
-            self.board[i + row, j + col] = player
-            
-        self.agents_info[player].available_pieces.remove(piece_id)
-
-        self.update_attributes(player)
-        
+        # self.update_attributes(player, row, col, piece)
+        self.faster_update_attributes(player, row, col, piece)
         return True
 
-    def update_attributes(self, player):
+    def update_attributes(self, player, row, col, piece):
         ### UPDATE OTHER ATTRIBUTES TO MAKE IT FASTER ###
         ### EXAMPLE: LOCKED/EXPANDER SQUARES ###
+        for i, j in piece.shape:
+            self.board[i + row, j + col] = player
+            
+        self.agents_info[player].available_pieces.remove(piece.id)
         self.agents_info[player].started = True
+
         for i in range(1, self.num_players + 1):
             self.agents_info[i].locked_squares = self.get_locked_squares(i)
-            if self.agents_info[i].started:
-                self.agents_info[i].expander_squares = self.get_expander_squares(i)
-            elif not self.legal_cell(list(self.agents_info[i].expander_squares.keys())[0], i):
-                self.agents_info[i].expander_squares = []
+            self.agents_info[i].expander_squares = self.get_expander_squares(i)
             
+    def faster_update_attributes(self, player, row, col, piece):
+        self.agents_info[player].available_pieces.remove(piece.id)
+        self.agents_info[player].started = True
+
+        for i, j in piece.locked:
+            self.agents_info[player].locked_squares.append((row + i, col + j))
+            if (row + i, col + j) in self.agents_info[player].expander_squares:
+                self.agents_info[player].expander_squares.pop((row + i, col + j))
+
+        for (i, j), (dx, dy) in piece.expanders.items():
+            if self.legal_cell((row + i, col + j), player): # add own expanders
+                self.agents_info[player].expander_squares[(row + i, col + j)] = (dx, dy)
+        
+
+        for i, j in piece.shape:
+            self.board[i + row, j + col] = player
+            if (i + row, j + col) in self.agents_info[player].expander_squares:
+                self.agents_info[player].expander_squares.pop((i + row, j + col))
+            for k in range(1, self.num_players + 1):
+                if k == player:
+                    continue
+                if (i + row, j + col) in self.agents_info[k].expander_squares:
+                    self.agents_info[k].expander_squares.pop((i + row, j + col))
+        
+        if self.mode == 'testing':
+            for i in range(1, self.num_players + 1):
+                try:
+                    assert list(sorted(self.agents_info[i].expander_squares.keys())) == list(sorted(self.get_expander_squares(i).keys()))
+                    a = self.get_locked_squares(i)
+                    for j in range(len(a)):
+                        try:
+                            assert a[j] in self.agents_info[i].locked_squares or 0 > a[j][0] or a[j][0] >= self.board_size or 0 > a[j][1] or a[j][1] >= self.board_size
+                        except:
+                            print("Player:", i)
+                            print("Expander squares:", self.agents_info[i].expander_squares)
+                            print("Expected:", a)
+                            assert False
+                except:
+                    print("Player:", i)
+                    print("Expander squares:", self.agents_info[i].expander_squares)
+                    print("Expected:", self.get_expander_squares(i))
+                    assert False
+                # a = self.agents_info[i].expander_squares
+                # self.agents_info[i].locked_squares == self.get_locked_squares(i)
+
+
     def possible_actions(self, player: int) -> list[Tuple[int, int, str, int]]:
         """Generate all possible moves for a player by checking each piece and transformation."""
         # start_time = time.time()
-        # actions = self.possible_actions_precomputed(player)
+        actions = self.possible_actions_precomputed(player)
         # end_time = time.time()
         # self.precomputed_time = end_time - start_time
         # self.log()
-        # return actions
+        return actions
         if self.mode == 'testing':
             start_time = time.time()
             efficient = self.possible_actions_efficient(player)
@@ -369,7 +426,7 @@ class BlokusEnv(gym.Env):
             else:
                 return []
             
-        dx, dy = self.agents_info[player].expander_squares[expander][0]
+        dx, dy = self.agents_info[player].expander_squares[expander]
         actions = self.get_actions_from_neighborhood(neighborhood)
         # print("neighborhood:", neighborhood, "actions:", len(actions))
         if (-2, 0, 16) in actions:
@@ -419,6 +476,8 @@ class BlokusEnv(gym.Env):
 
         if(not self.place_piece(action_parameters=(row, col, piece_id, piece_transformation), player=self.current_player)):
             self.reset()
+            print("Invalid move")
+            assert False
             return {}, self.BAD_MOVE_PUNISHMENT, True, True, {}
         
         self.current_player = (self.current_player % self.num_players) + 1
@@ -456,7 +515,7 @@ class BlokusEnv(gym.Env):
                 pygame.draw.rect(screen, color, pygame.Rect(j * self.render_scale * 4, i * self.render_scale * 4, self.render_scale * 4, self.render_scale * 4), border_radius=self.render_scale)
         
         for i, j in self.agents_info[self.current_player].locked_squares:
-            if self.board[i, j] == 0:
+            if 0 <= i < self.board_size and 0 <= j < self.board_size and self.board[i, j] == 0:
                 pygame.draw.rect(screen, locked_color, pygame.Rect(j * self.render_scale * 4, i * self.render_scale * 4, self.render_scale * 4, self.render_scale * 4), border_radius=self.render_scale)
 
         for i, j in self.agents_info[self.current_player].expander_squares:

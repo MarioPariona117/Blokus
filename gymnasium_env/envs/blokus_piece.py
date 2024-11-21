@@ -1,12 +1,15 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 PIECE_IDS = ['1', '2', 'I3', 'V3', 'I4', 'L4', 'O', 'T4', 'Z4', 'F', 'I5', 'L5', 'N', 'P', 'T5', 'U', 'V5', 'W', 'X', 'Y', 'Z5']
 
 class BlokusPiece:
-    def __init__(self, shape: List[Tuple[int, int]], size: Tuple[int, int], idx=None):
+    def __init__(self, id: str, shape: List[Tuple[int, int]], size: Tuple[int, int], expanders: Dict[Tuple[int, int], List[Tuple[int, int]]], locked: List[Tuple[int, int]]):
+        self.id = id
         self.shape = shape
         self.size = size
-        
+        self.expanders = expanders
+        self.locked = locked
+
     def print(self):
         N = 3
         max_x = max(pos[0] for pos in self.shape)
@@ -72,32 +75,56 @@ class BlokusPieceTransformations:
             case 'Z5':
                 shape = [(0, 0), (0, 1), (1, 1), (2, 1), (2, 2)]
         size = (0, 0)
+        expanders = {}
+        locked = set()
         for tile in shape:
             size = (max(size[0], tile[0] + 1), max(size[1], tile[1] + 1))
-        return BlokusPiece(shape, size)
+            for surrounders in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+                new_tile = (tile[0] + surrounders[0], tile[1] + surrounders[1])
+                if new_tile not in shape:
+                    locked.add(new_tile)
+
+        for tile in shape:
+            for surrounders in [(1, 1), (-1, -1), (-1, 1), (1, -1)]:
+                new_tile = (tile[0] + surrounders[0], tile[1] + surrounders[1])
+                if new_tile not in shape and new_tile not in locked:
+                    expanders[new_tile] = surrounders
+
+        # expanders = sorted(list(expanders))
+        locked = sorted(list(locked))
+        return BlokusPiece(id, shape, size, expanders, locked)
     
     @staticmethod
     def __rotate_right_shape(piece):
         (h, w) = piece.size
-        new_piece = BlokusPiece([(j, h - i - 1) for (i, j) in piece.shape], size=(w, h))
+        right = lambda pos: (pos[1], h - pos[0] - 1)
+        new_expanders = {right(i): (dy, -dx) for i, (dx, dy) in piece.expanders.items()}
+        new_piece = BlokusPiece(piece.id, list(map(right, piece.shape)), size=(w, h), expanders=new_expanders, locked=list(map(right, piece.locked)))
         return new_piece
     
     @staticmethod
     def __reflect_diagonal(piece):
         (h, w) = piece.size
-        new_piece = BlokusPiece(shape=[(j, i) for (i, j) in piece.shape], size=(w, h))
+        diagonal = lambda pos: (pos[1], pos[0])
+        new_expanders = {diagonal(i): (dy, dx) for i, (dx, dy) in piece.expanders.items()}
+        new_piece = BlokusPiece(piece.id, list(map(diagonal, piece.shape)), size=(w, h), expanders=new_expanders, locked=list(map(diagonal, piece.locked)))
         return new_piece
     
     @staticmethod
     def __reflect_vertical(piece):
         (h, w) = piece.size
-        new_piece = BlokusPiece(shape=[(i, w - j - 1) for (i, j) in piece.shape], size=(h, w))
+        vertical = lambda pos: (pos[0], w - pos[1] - 1)
+        new_expanders = {vertical(i): (dx, -dy) for i, (dx, dy) in piece.expanders.items()}
+        new_piece = BlokusPiece(piece.id, list(map(vertical, piece.shape)), size=(h, w), expanders=new_expanders, locked=list(map(vertical, piece.locked)))
         return new_piece
     
     @staticmethod
     def __reflect_horizontal(piece):
         (h, w) = piece.size
-        new_piece = BlokusPiece(shape=[(h - i - 1, j) for (i, j) in piece.shape], size=(h, w))
+        horizontal = lambda pos: (h - pos[0] - 1, pos[1])
+        print(piece.expanders)
+        new_expanders = {horizontal(i): (-dx, dy) for i, (dx, dy) in piece.expanders.items()}
+        new_piece = BlokusPiece(piece.id, list(map(horizontal, piece.shape)), size=(h, w), expanders=new_expanders, locked=list(map(horizontal, piece.locked)))
         return new_piece
     
     def __init__(self, id):
@@ -116,17 +143,19 @@ class BlokusPieceTransformations:
         # transformation[x] has a vertical reflection of transformation[y] if (x ^ y) & 1
         # transformation[x] has a horizontal reflection of transformation[y] if (x ^ y) & 2
 
-        self.transformation_shape_list = []
+        transformation_shape_list = []
+        transformation_index = []
         self.indexes = []
         self.aux = []
         for i in range(8):
             piece = tuple(sorted(transformations[i].shape)), transformations[i].size
-            if piece not in self.transformation_shape_list:
-                self.indexes.append(len(self.transformation_shape_list))
+            if piece not in transformation_shape_list:
+                self.indexes.append(len(transformation_shape_list))
                 self.aux.append(i)
-                self.transformation_shape_list.append(piece)
+                transformation_shape_list.append(piece)
+                transformation_index.append(i)
             else:
-                self.indexes.append(self.transformation_shape_list.index(piece))
+                self.indexes.append(transformation_shape_list.index(piece))
         
-        self.transformations = [BlokusPiece(list(shape), size) for shape, size in self.transformation_shape_list]
+        self.transformations = [transformations[i] for i in transformation_index]
 

@@ -4,9 +4,8 @@ import matplotlib.pyplot as plt
 from gymnasium_env.envs.blokus_piece import BlokusPieceTransformations, BlokusPiece
 
 def save_piece_image(piece: BlokusPiece, folder_path, filename):
-    N = 5
+    N = 11
     grid_size = 15  # Fixed grid size for all images
-    grid = [[0 for _ in range(grid_size * N)] for _ in range(grid_size * N)]
     
     piece_x = [pos[0] for pos in piece.shape]
     piece_y = [pos[1] for pos in piece.shape]
@@ -15,14 +14,27 @@ def save_piece_image(piece: BlokusPiece, folder_path, filename):
     
     offset_x = (grid_size - (max_x - min_x + 1)) // 2
     offset_y = (grid_size - (max_y - min_y + 1)) // 2
+    grid = [[[166, 156, 144] for _ in range(grid_size * N)] for _ in range(grid_size * N)]
     
     for x, y in piece.shape:
         for i in range(N):
             for j in range(N):
-                grid[(x + offset_x) * N + i][(y + offset_y) * N + j] = 1
+                grid[(x + offset_x) * N + i][(y + offset_y) * N + j] = [0, 0, 255]
+    for expander in piece.expanders:
+        for i in range(N):
+            for j in range(N):
+                if (i - N // 2) ** 2 + (j - N // 2) ** 2 <= (N // 2) ** 2:
+                    grid[(expander[0] + offset_x) * N + i][(expander[1] + offset_y) * N + j] = [12, 107, 0]  # Use 0.5 for a different shade
+    
+    for locked in piece.locked:
+        for i in range(N):
+            for j in range(N):
+                if (i == j or i + j == N - 1):
+                    # print(i, j)
+                    grid[(locked[0] + offset_x) * N + i][(locked[1] + offset_y) * N + j] = [255, 0, 0]  # Use 0.75 for another different shade
     
     fig, ax = plt.subplots()  # Adjust figure size for better resolution
-    ax.imshow(grid, cmap='gray', vmin=0, vmax=1, interpolation='nearest')
+    ax.imshow(grid, interpolation='nearest')
     # ax.set_xlim(-1, grid_size * N)
     # ax.set_ylim(grid_size * N, -1)
     # Add grid lines
