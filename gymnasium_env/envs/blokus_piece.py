@@ -122,7 +122,6 @@ class BlokusPieceTransformations:
     def __reflect_horizontal(piece):
         (h, w) = piece.size
         horizontal = lambda pos: (h - pos[0] - 1, pos[1])
-        print(piece.expanders)
         new_expanders = {horizontal(i): (-dx, dy) for i, (dx, dy) in piece.expanders.items()}
         new_piece = BlokusPiece(piece.id, list(map(horizontal, piece.shape)), size=(h, w), expanders=new_expanders, locked=list(map(horizontal, piece.locked)))
         return new_piece
