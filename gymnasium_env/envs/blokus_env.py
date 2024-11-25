@@ -24,6 +24,7 @@ class BlokusEnvAgentInfo:
         self.available_pieces = set(list(available_pieces))
         self.expander_squares = {}
         self.locked_squares = set()
+        self.possible_actions = None
         self.started = False
 
 class BlokusEnv(gym.Env):
@@ -94,7 +95,7 @@ class BlokusEnv(gym.Env):
         ########################### ACTION AND OBSERVATION SPACES ######################################
         self.action_space = spaces.Discrete(self.board_size * self.board_size * BlokusEnv.different_pieces)
         self.observation_space = spaces.Dict({
-            "board": spaces.Box(low=0, high=4, shape=(self.board_size, self.board_size), dtype=np.int32),  # 20x20 board, 0-4 integer values (customize as needed)
+            "state": spaces.Box(low=0, high=4, shape=(self.board_size, self.board_size), dtype=np.int32),  # 20x20 board, 0-4 integer values (customize as needed)
             # "available_pieces": spaces.MultiBinary(len(BlokusEnv.pieces)),  # Binary vector for each piece (1 = available, 0 = used)
             "expander_squares": spaces.Dict({
                 "coordinates": spaces.MultiBinary((self.board_size, self.board_size)),  # Binary 20x20 matrix indicating expander squares for the current player
@@ -148,7 +149,8 @@ class BlokusEnv(gym.Env):
 
     def _get_obs(self):
         return {
-            "board": np.array(self.board),  # 2D array of the current board state
+            "state": np.array(self.board),  # 2D array of the current board state
+            "possible_actions": np.array(self.possible_actions(self.current_player)),  # List of possible actions for the current player
             # "available_pieces": [piece_id for piece_id, piece in BlokusEnv.pieces.items() if not piece.used],  # List of unused pieces
             "expander_squares": np.array(self.agents_info[self.current_player].expander_squares),  # Expander squares for the current player
             "locked_squares": np.array(self.agents_info[self.current_player].locked_squares),  # Locked squares for the current player
@@ -297,8 +299,9 @@ class BlokusEnv(gym.Env):
         return True
 
     def update_attributes(self, player, row, col, piece):
-        ### UPDATE OTHER ATTRIBUTES TO MAKE IT FASTER ###
-        ### EXAMPLE: LOCKED/EXPANDER SQUARES ###
+        for i in range(1, self.num_players + 1):
+            self.agents_info[i].possible_actions = None
+
         for i, j in piece.shape:
             self.board[i + row, j + col] = player
             
@@ -310,6 +313,11 @@ class BlokusEnv(gym.Env):
             self.agents_info[i].expander_squares = self.get_expander_squares(i)
             
     def faster_update_attributes(self, player, row, col, piece):
+        ### UPDATE OTHER ATTRIBUTES TO MAKE IT FASTER ###
+        ### EXAMPLE: LOCKED/EXPANDER SQUARES ###
+        for i in range(1, self.num_players + 1):
+            self.agents_info[i].possible_actions = None
+
         initial_time = time.time()
         self.agents_info[player].available_pieces.remove(piece.id)
         self.agents_info[player].started = True
@@ -362,11 +370,14 @@ class BlokusEnv(gym.Env):
 
     def possible_actions(self, player: int) -> list[Tuple[int, int, str, int]]:
         """Generate all possible moves for a player by checking each piece and transformation."""
+        if self.agents_info[player].possible_actions is not None:
+            return self.agents_info[player].possible_actions
         start_time = time.time()
         actions = self.possible_actions_precomputed(player)
         end_time = time.time()
         self.precomputed_time = end_time - start_time
         self.log()
+        self.agents_info[player].possible_actions = actions
         return actions
         if self.mode == 'testing':
             start_time = time.time()
@@ -508,14 +519,29 @@ class BlokusEnv(gym.Env):
         row, col, piece_id, piece_transformation = self._action_to_tuple(action)
 
         if(not self.place_piece(action_parameters=(row, col, piece_id, piece_transformation), player=self.current_player)):
-            self.reset()
             print("Invalid move")
+            print("Piece:", piece_id, "Transformation:", piece_transformation, "Row:", row, "Col:", col)
+            print("Current player:", self.current_player)
+            print("Agents info:", self.agents_info)
+            print("Board state:\n", self.board)
             assert False
-            return {}, self.BAD_MOVE_PUNISHMENT, True, True, {}
+            observation = self._get_obs()
+            info = self._get_info()
+            return observation, self.BAD_MOVE_PUNISHMENT, True, True, info
         
         self.current_player = (self.current_player % self.num_players) + 1
-
-        terminated = False
+        passed = 0
+        while passed < self.num_players and len(self.possible_actions(self.current_player)) == 0:
+            passed += 1
+            self.current_player = (self.current_player % self.num_players) + 1
+        
+        if passed == self.num_players:
+            terminated = True
+        else:
+            terminated = False
+            # print("Current player:", self.current_player)
+            # print("actions:", self.possible_actions(self.current_player))
+            
         reward = len(BlokusEnv.pieces[piece_id].transformations[piece_transformation].shape)
         observation = self._get_obs()
         info = self._get_info()
@@ -562,7 +588,7 @@ class BlokusEnv(gym.Env):
         
         # pygame.display.flip()
         if self.render_mode == "human":
-            print("hay")
+            # print("hay")
             # The following line copies our drawings from `canvas` to the visible window
             self.window.blit(screen, screen.get_rect())
             pygame.event.pump()

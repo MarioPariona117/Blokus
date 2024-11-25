@@ -2,7 +2,7 @@ import gymnasium as gym
 import random
     
 def random_policy(actions):
-    if not actions:
+    if len(actions) == 0:
         return None
     return random.choice(actions)
 
