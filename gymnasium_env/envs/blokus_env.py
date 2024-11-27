@@ -105,7 +105,6 @@ class BlokusEnv(gym.Env):
             "current_player": spaces.Discrete(4), # Assuming a 4-player game
             "possible_actions": spaces.MultiBinary(self.board_size * self.board_size * BlokusEnv.different_pieces)  # Binary vector for each possible action (1 = possible, 0 = impossible)
         })
-        self.reset()
         """
         If human-rendering is used, `self.window` will be a reference
         to the window that we draw to. `self.clock` will be a clock that is used
@@ -119,6 +118,7 @@ class BlokusEnv(gym.Env):
         end_time = time.time()
         BlokusEnv.initialization_total_time += end_time - init_time
         print(f"Initialised on {mode} mode")
+        self.reset()
         
     def reset(
         self,
