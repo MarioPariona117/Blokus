@@ -37,7 +37,6 @@ class BlokusEnv(gym.Env):
     metadata = {'render_modes': ['human', 'console'], 'render_fps': 4}
     PIECE_IDS = ['1', '2', 'I3', 'V3', 'I4', 'L4', 'O', 'T4', 'Z4', 'F', 'I5', 'L5', 'N', 'P', 'T5', 'U', 'V5', 'W', 'X', 'Y', 'Z5']
     BAD_MOVE_PUNISHMENT = -100
-    neighborhood_to_encoded_actions = None
     pieces = None
     _get_piece_info = None
     NEIGHBOR_POS = None
@@ -45,7 +44,7 @@ class BlokusEnv(gym.Env):
     initialization_total_time = 0
     different_pieces = 0
     
-    def __init__(self, render_mode='console', board_size=14, num_players=2, render_scale=5, neighborhood_dir=None, mode = 'testing'):
+    def __init__(self, render_mode='console', board_size=14, num_players=2, render_scale=5, neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", mode = 'testing'):
         """Initialize the Blokus environment with parameters for rendering, board size, number of players, and render scaling."""
         super(BlokusEnv, self).__init__()
         init_time = time.time()
@@ -149,6 +148,7 @@ class BlokusEnv(gym.Env):
 
     def _get_obs(self):
         return {
+            "n_players": self.num_players,  # Number of players in the game
             "state": np.array(self.board),  # 2D array of the current board state
             "possible_actions": np.array(self.possible_actions(self.current_player)),  # List of possible actions for the current player
             # "available_pieces": [piece_id for piece_id, piece in BlokusEnv.pieces.items() if not piece.used],  # List of unused pieces
@@ -163,6 +163,44 @@ class BlokusEnv(gym.Env):
             #     # self._agent_location - self._target_location, ord=1
             # )
         }
+    
+    def capture_state(self):
+        state = {
+            "current_player": self.current_player,
+        }
+        state["board"] = np.zeros((self.board_size, self.board_size), dtype=np.int8)
+        for i in range(self.board_size):
+            for j in range(self.board_size):
+                state["board"][i, j] = self.board[i, j]
+
+        state["agents_info"] = [{} for _ in range(self.num_players + 1)]
+        for i in range(1, self.num_players + 1):
+            state["agents_info"][i]["available_pieces"] = set(self.agents_info[i].available_pieces)
+            state["agents_info"][i]["expander_squares"] = dict(self.agents_info[i].expander_squares)
+            state["agents_info"][i]["locked_squares"] = set(self.agents_info[i].locked_squares)
+            if self.agents_info[i].possible_actions is not None:
+                state["agents_info"][i]["possible_actions"] = self.agents_info[i].possible_actions.copy()
+            else:
+                state["agents_info"][i]["possible_actions"] = None
+            state["agents_info"][i]["started"] = self.agents_info[i].started
+        return state
+
+    def restore_state(self, state):
+        # print(state)
+        for i in range(self.board_size):
+            for j in range(self.board_size):
+                self.board[i, j] = state["board"][i, j]
+        self.current_player = state["current_player"]
+        for i in range(1, self.num_players + 1):
+            self.agents_info[i].player_id = i
+            self.agents_info[i].available_pieces = set(state["agents_info"][i]["available_pieces"])
+            self.agents_info[i].expander_squares = dict(state["agents_info"][i]["expander_squares"])
+            self.agents_info[i].locked_squares = set(state["agents_info"][i]["locked_squares"])
+            if state["agents_info"][i]["possible_actions"] is not None:
+                self.agents_info[i].possible_actions = state["agents_info"][i]["possible_actions"].copy()
+            else:
+                self.agents_info[i].possible_actions = None
+            self.agents_info[i].started = state["agents_info"][i]["started"]
 
     def legal_cell(self, pos, player):
         return (
@@ -270,12 +308,14 @@ class BlokusEnv(gym.Env):
         piece = BlokusEnv.pieces[piece_id].transformations[piece_transformation]
         if check:
             if not piece.id in self.agents_info[player].available_pieces:
+                print("Piece already used")
                 return False #### PIECE ALREADY USED ####
 
             can_place = False
             for i, j in piece.shape:
                 board_row, board_col = i + row, j + col
                 if not self.legal_cell((board_row, board_col), player):
+                    print("Illegal cell")
                     return False
                 if (board_row, board_col) in self.agents_info[player].expander_squares:
                     can_place = True #### TOUCHES A CORNER PIECE ####
@@ -368,7 +408,7 @@ class BlokusEnv(gym.Env):
                 # self.agents_info[i].locked_squares == self.get_locked_squares(i)
 
 
-    def possible_actions(self, player: int) -> list[Tuple[int, int, str, int]]:
+    def possible_actions(self, player: int) -> np.ndarray:
         """Generate all possible moves for a player by checking each piece and transformation."""
         if self.agents_info[player].possible_actions is not None:
             return self.agents_info[player].possible_actions
@@ -419,7 +459,7 @@ class BlokusEnv(gym.Env):
             else: 
                 return self.possible_actions_efficient(player)
     
-    def possible_actions_efficient(self, player: int) -> ActType:
+    def possible_actions_efficient(self, player: int) -> np.ndarray:
         """Generate all possible moves for a player by checking each piece and transformation efficiently."""
         actions = set()
         for piece_id in self.agents_info[player].available_pieces:
@@ -429,9 +469,9 @@ class BlokusEnv(gym.Env):
                     for i, j in self.agents_info[player].expander_squares:
                         if self.place_piece((i - x, j - y, piece_id, piece_transformation), player, place=False):
                             actions.add(self._tuple_to_action((i - x, j - y, piece_id, piece_transformation)))
-        return sorted(list(actions))
+        return np.array(list(actions))
 
-    def possible_actions_inefficient(self, player: int) -> ActType:
+    def possible_actions_inefficient(self, player: int) -> np.ndarray:
         """Generate all possible moves for a player by checking each piece and transformation inefficiently."""
         actions = []
         for piece_id in self.agents_info[player].available_pieces:
@@ -442,15 +482,14 @@ class BlokusEnv(gym.Env):
                     for j in range(self.board_size - piece_shape[1] + 1):
                         if self.place_piece((i, j, piece_id, piece_transformation), player, place=False):
                             actions.append(self._tuple_to_action((i, j, piece_id, piece_transformation)))
-        return sorted(list(actions))
+        return np.array(list(actions))
 
-    def possible_actions_precomputed(self, player: int) -> ActType:
+    def possible_actions_precomputed(self, player: int) -> np.ndarray:
         """Generate all possible moves for a player by checking each piece and transformation using precomputed data."""
         actions = set()
         for expander in self.agents_info[player].expander_squares:
             actions.update(self.possible_actions_precomputed_expander_square(expander, player))
-        
-        return sorted(list(actions))
+        return np.array(list(actions))
     
     def log(self):
         # self.total_efficient += self.efficient_time
