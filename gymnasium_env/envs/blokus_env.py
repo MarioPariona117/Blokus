@@ -11,7 +11,6 @@ from . import BlokusPieceTransformations
 import pygame
 import time
 
-
 """
     Agents or Players
     How to model actions?
@@ -34,7 +33,7 @@ class BlokusEnv(gym.Env):
         metadata (dict): Metadata for the environment, including render modes.
         PIECE_IDS (list): List of piece identifiers used in the game.
     """
-    metadata = {'render_modes': ['human', 'console'], 'render_fps': 4}
+    metadata = {'render_modes': ['human', 'console', 'rgb_array'], 'render_fps': 4}
     PIECE_IDS = ['1', '2', 'I3', 'V3', 'I4', 'L4', 'O', 'T4', 'Z4', 'F', 'I5', 'L5', 'N', 'P', 'T5', 'U', 'V5', 'W', 'X', 'Y', 'Z5']
     BAD_MOVE_PUNISHMENT = -100
     pieces = None
@@ -44,17 +43,10 @@ class BlokusEnv(gym.Env):
     initialization_total_time = 0
     different_pieces = 0
     
-    def __init__(self, render_mode='console', board_size=14, num_players=2, render_scale=5, neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", mode = 'testing'):
+    def __init__(self, render_mode='console', board_size=14, num_players=2, render_scale=10, neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", mode = 'testing'):
         """Initialize the Blokus environment with parameters for rendering, board size, number of players, and render scaling."""
         super(BlokusEnv, self).__init__()
-        init_time = time.time()
         assert render_mode is None or render_mode in self.metadata["render_modes"]
-        self.total_efficient = 0
-        self.total_inefficient = 0
-        self.total_precomputed = 0
-        self.total_faster = 0
-        self.faster_update_attributes_time = 0
-        self.precomputed_time = 0
         self.freq = [0 for _ in range(130)]
         ##################################### PIECES #####################################
         if BlokusEnv.pieces is None:
@@ -114,8 +106,6 @@ class BlokusEnv(gym.Env):
         self.mode = mode
         self.window = None
         self.clock = None
-        end_time = time.time()
-        BlokusEnv.initialization_total_time += end_time - init_time
         print(f"Initialised on {mode} mode")
         self.reset()
         
@@ -144,6 +134,9 @@ class BlokusEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
 
+        if self.render_mode == "human":
+            self._render_frame()
+
         return observation, info
 
     def _get_obs(self):
@@ -159,9 +152,6 @@ class BlokusEnv(gym.Env):
 
     def _get_info(self):
         return {
-            # "distance": np.linalg.norm(
-            #     # self._agent_location - self._target_location, ord=1
-            # )
         }
     
     def capture_state(self):
@@ -186,7 +176,6 @@ class BlokusEnv(gym.Env):
         return state
 
     def restore_state(self, state):
-        # print(state)
         for i in range(self.board_size):
             for j in range(self.board_size):
                 self.board[i, j] = state["board"][i, j]
@@ -334,8 +323,6 @@ class BlokusEnv(gym.Env):
             self.faster_update_attributes(player, row, col, piece)
         else:
             self.update_attributes(player, row, col, piece)
-        if self.render_mode == "human":
-            self._render_frame()
         return True
 
     def update_attributes(self, player, row, col, piece):
@@ -358,7 +345,6 @@ class BlokusEnv(gym.Env):
         for i in range(1, self.num_players + 1):
             self.agents_info[i].possible_actions = None
 
-        initial_time = time.time()
         self.agents_info[player].available_pieces.remove(piece.id)
         self.agents_info[player].started = True
 
@@ -381,9 +367,6 @@ class BlokusEnv(gym.Env):
                 if (i + row, j + col) in self.agents_info[k].expander_squares:
                     self.agents_info[k].expander_squares.pop((i + row, j + col))
         
-        end_time = time.time()
-        self.faster_update_attributes_time = end_time - initial_time
-        self.log()
         if self.mode == 'testing':
             raise ValueError("Testing mode")
             for i in range(1, self.num_players + 1):
@@ -412,27 +395,17 @@ class BlokusEnv(gym.Env):
         """Generate all possible moves for a player by checking each piece and transformation."""
         if self.agents_info[player].possible_actions is not None:
             return self.agents_info[player].possible_actions
-        start_time = time.time()
         actions = self.possible_actions_precomputed(player)
-        end_time = time.time()
-        self.precomputed_time = end_time - start_time
-        self.log()
         self.agents_info[player].possible_actions = actions
         return actions
         if self.mode == 'testing':
-            start_time = time.time()
             efficient = self.possible_actions_efficient(player)
-            end_time = time.time()
             self.efficient_time = end_time - start_time
 
-            start_time = time.time()
             inefficient = self.possible_actions_inefficient(player)
-            end_time = time.time()
             self.inefficient_time = end_time - start_time
             if BlokusEnv.NEIGHBORHOOD_TO_ENCODED_ACTIONS is not None:
-                start_time = time.time()
                 precomputed = self.possible_actions_precomputed(player)
-                end_time = time.time()
                 self.precomputed_time = end_time - start_time
                 if not (set(efficient) == set(inefficient) == set(precomputed)):
                     print("Efficient actions:", efficient)
@@ -442,7 +415,6 @@ class BlokusEnv(gym.Env):
                     print("Current player:", self.current_player)
                     print("Agents info:", self.agents_info)
                     raise ValueError("Actions are not the same")
-                self.log()
             else:
                 if not set(efficient) == set(inefficient):
                     print("Efficient actions:", efficient)
@@ -450,7 +422,6 @@ class BlokusEnv(gym.Env):
                     print("Current board state:\n", self.board)
                     print("Current player:", self.current_player)
                     print("Agents info:", self.agents_info)
-                    # self.log()
                     raise ValueError("Actions are not the same")
             return efficient
         else:
@@ -491,14 +462,6 @@ class BlokusEnv(gym.Env):
             actions.update(self.possible_actions_precomputed_expander_square(expander, player))
         return np.array(list(actions))
     
-    def log(self):
-        # self.total_efficient += self.efficient_time
-        # self.total_inefficient += self.inefficient_time
-        self.total_precomputed += self.precomputed_time
-        self.total_faster += self.faster_update_attributes_time
-        self.precomputed_time = 0
-        self.faster_update_attributes_time = 0
-
     def possible_actions_precomputed_expander_square(self, expander, player: int) -> ActType:
         """Generate all possible moves for a player by checking each piece and transformation using precomputed data for a single expander square."""
         neighborhood = self.get_neighborhood(expander, player)
@@ -578,19 +541,21 @@ class BlokusEnv(gym.Env):
             terminated = True
         else:
             terminated = False
-            # print("Current player:", self.current_player)
-            # print("actions:", self.possible_actions(self.current_player))
             
         reward = len(BlokusEnv.pieces[piece_id].transformations[piece_transformation].shape)
         observation = self._get_obs()
         info = self._get_info()
         
+        if self.render_mode == "human":
+            self._render_frame()
+
         return observation, reward, terminated, False, info
 
     def render(self):
-        if self.render_mode == 'human':
-            self._render_frame()
-        elif self.render_mode == 'console':
+        if self.render_mode == "rgb_array":
+            return self._render_frame()
+
+        elif self.render_mode == "console":
             self._render_console()
 
     def _render_frame(self):
@@ -602,7 +567,6 @@ class BlokusEnv(gym.Env):
         if self.clock is None and self.render_mode == "human":
             self.clock = pygame.time.Clock()
 
-        # screen = self.window
         screen = pygame.Surface((self.board_size * self.render_scale * 4, self.board_size * self.render_scale * 4))
         colors = [(217, 199, 197), (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]
         expander_color = (224, 224, 224)
@@ -625,35 +589,21 @@ class BlokusEnv(gym.Env):
             if self.board[i, j] == 0:
                 pygame.draw.rect(screen, expander_color, pygame.Rect(j * self.render_scale * 4, i * self.render_scale * 4, self.render_scale * 4, self.render_scale * 4), border_radius=self.render_scale)
         
-        # pygame.display.flip()
         if self.render_mode == "human":
-            # print("hay")
-            # The following line copies our drawings from `canvas` to the visible window
             self.window.blit(screen, screen.get_rect())
             pygame.event.pump()
             pygame.display.update()
 
-            # We need to ensure that human-rendering occurs at the predefined framerate.
-            # The following line will automatically add a delay to keep the framerate stable.
             self.clock.tick(self.metadata["render_fps"])
         else:  # rgb_array
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(screen)), axes=(1, 0, 2)
             )
-        # # Add a loop to keep the window open
-        # running = True
-        # while running:
-        #     for event in pygame.event.get():
-        #         if event.type == pygame.QUIT:
-        #             running = False
-        #     self.clock.tick(60)  # Limit the frame rate to 60 FPS
-        # # pygame.display.quit() 
-        # pygame.quit()
-        # print("Stopped")
 
     def _render_console(self):
         for row in self.board:
             print(''.join(str(cell) for cell in row))
+        print()
 
     def close(self):
         """Close the environment and perform any cleanup."""
@@ -668,8 +618,3 @@ gym.envs.registration.register(
     id='gymnasium_env/Blokus-v0',
     entry_point='gymnasium_env:BlokusEnv',
 )
-
-# if __name__ == "__main__":
-#     env = BlokusEnv()
-#     env.reset()
-#     env.render()

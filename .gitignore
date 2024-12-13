@@ -15,6 +15,12 @@ gymnasium_env/.DS_Store
 ## models
 *.pkl
 
+## videos
+blokus_games/
+
+## tmp
+tempCodeRunnerFile.py
+
 # C extensions
 *.so
 
