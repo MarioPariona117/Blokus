@@ -158,3 +158,12 @@ class BlokusPieceTransformations:
         
         self.transformations = [transformations[i] for i in transformation_index]
 
+    # def reflect_horizontal(self, index):
+    #     return self.aux[index] ^ 2
+
+    # def reflect_vertical(self, index):
+    #     return self.aux[index] ^ 1
+    
+    # def reflect_diagonal(self, index):
+    #     return self.aux[index] ^ 4
+

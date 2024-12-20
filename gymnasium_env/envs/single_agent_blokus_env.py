@@ -31,3 +31,12 @@ class SingleAgentBlokusEnv(BlokusEnv):
 
     def reset(self, *args, **kwargs):
         return super(SingleAgentBlokusEnv, self).reset(*args, **kwargs)
+    
+    def save_caches(self):
+        for agent in self.hidden_agents:
+            if agent is not None:
+                try:
+                    agent.save_cache()
+                except Exception as e:
+                    print(f"Could not save cache for {agent.name}: {e}")    
+                    

@@ -150,6 +150,21 @@ class BlokusEnv(gym.Env):
             "current_player": self.current_player  # ID of the current player
         }
 
+    def get_all_obs_two_players(self):
+        assert self.num_players == 2
+        return {
+            "n_players": self.num_players,  # Number of players in the game
+            "state": np.array(self.board),  # 2D array of the current board state
+            "expander_squares": [
+                self.agents_info[self.current_player].expander_squares, # Expander squares for the current player
+                self.agents_info[3 - self.current_player].expander_squares # Expander squares for the other player
+            ],
+            "locked_squares": [
+                self.agents_info[self.current_player].locked_squares, # Locked squares for the current player
+                self.agents_info[3 - self.current_player].locked_squares # Locked squares for the other player
+            ],
+            "current_player": self.current_player  # ID of the current player
+        }
     def _get_info(self):
         return {
         }
@@ -305,6 +320,9 @@ class BlokusEnv(gym.Env):
                 board_row, board_col = i + row, j + col
                 if not self.legal_cell((board_row, board_col), player):
                     print("Illegal cell")
+                    print(f"Failed to place piece: {piece_id} at ({row}, {col}) with transformation {piece_transformation} for player {player}")
+                    print(self.board)
+                    assert False
                     return False
                 if (board_row, board_col) in self.agents_info[player].expander_squares:
                     can_place = True #### TOUCHES A CORNER PIECE ####
