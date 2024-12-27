@@ -39,11 +39,31 @@ class BlokusEnv(gym.Env):
     pieces = None
     _get_piece_info = None
     NEIGHBOR_POS = None
-    NEIGHBORHOOD_TO_ENCODED_ACTIONS = None
+    # NEIGHBORHOOD_TO_ENCODED_ACTIONS = None
     initialization_total_time = 0
     different_pieces = 0
-    
-    def __init__(self, render_mode='console', board_size=14, num_players=2, render_scale=10, neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", mode = 'testing'):
+
+    # @classmethod
+    def load_neighborhood(neighborhood_dir):
+        if BlokusEnv.NEIGHBOR_POS is None:
+            BlokusEnv.NEIGHBORHOOD_TO_ENCODED_ACTIONS = np.load(
+                f"{neighborhood_dir}/compute_actions.pkl", allow_pickle=True
+            )
+            print("Neighborhood to encoded actions loaded")
+            BlokusEnv.NEIGHBOR_POS = np.load(
+                f"{neighborhood_dir}/neighbor_pos.pkl", allow_pickle=True
+            )
+        else:
+            print("Neighborhood already loaded")
+    def __init__(
+        self, 
+        render_mode='console', 
+        board_size=14, 
+        num_players=2, 
+        render_scale=10, 
+        neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", 
+        testing_mode=False
+    ):
         """Initialize the Blokus environment with parameters for rendering, board size, number of players, and render scaling."""
         super(BlokusEnv, self).__init__()
         assert render_mode is None or render_mode in self.metadata["render_modes"]
@@ -63,13 +83,10 @@ class BlokusEnv(gym.Env):
                     BlokusEnv._get_piece_info.append((BlokusEnv.PIECE_IDS[i], j))
 
             assert len(BlokusEnv._get_piece_info) == BlokusEnv.different_pieces
-        
-        if neighborhood_dir is not None:
-            if BlokusEnv.NEIGHBOR_POS is None:
-                BlokusEnv.NEIGHBORHOOD_TO_ENCODED_ACTIONS = np.load(f"{neighborhood_dir}/compute_actions.pkl", allow_pickle=True)
-                print("Neighborhood to encoded actions loaded")
-                BlokusEnv.NEIGHBOR_POS = np.load(f"{neighborhood_dir}/neighbor_pos.pkl", allow_pickle=True)
-        
+        print(f"Before loading: {BlokusEnv.NEIGHBOR_POS is None}")
+        if neighborhood_dir:
+            BlokusEnv.load_neighborhood(neighborhood_dir)
+        print(f"After loading: {BlokusEnv.NEIGHBOR_POS is None}")
         ## ACTIONS DECODING/ENCODING ##
         # f: (row, col, piece_id, piece_transformation) -> action [0, board_size*board_size*91]
         
@@ -86,15 +103,16 @@ class BlokusEnv(gym.Env):
         ########################### ACTION AND OBSERVATION SPACES ######################################
         self.action_space = spaces.Discrete(self.board_size * self.board_size * BlokusEnv.different_pieces)
         self.observation_space = spaces.Dict({
-            "state": spaces.Box(low=0, high=4, shape=(self.board_size, self.board_size), dtype=np.int32),  # 20x20 board, 0-4 integer values (customize as needed)
-            # "available_pieces": spaces.MultiBinary(len(BlokusEnv.pieces)),  # Binary vector for each piece (1 = available, 0 = used)
-            "expander_squares": spaces.Dict({
-                "coordinates": spaces.MultiBinary((self.board_size, self.board_size)),  # Binary 20x20 matrix indicating expander squares for the current player
-                "count": spaces.Discrete(self.board_size * self.board_size)  # Count of expander squares
-            }),  # Dictionary containing expander squares information
-            "locked_squares": spaces.MultiBinary((self.board_size, self.board_size)),  # Binary 20x20 matrix indicating locked squares for the current player
-            "current_player": spaces.Discrete(4), # Assuming a 4-player game
-            "possible_actions": spaces.MultiBinary(self.board_size * self.board_size * BlokusEnv.different_pieces)  # Binary vector for each possible action (1 = possible, 0 = impossible)
+            "n_players": spaces.Discrete(4),
+            "state": spaces.Box(low=0, high=self.num_players + 1, shape=(self.board_size, self.board_size), dtype=np.uint8),
+            "possible_actions": spaces.Sequence(self.action_space),
+            "expander_squares": spaces.Tuple([
+                spaces.Sequence(spaces.Tuple((spaces.Discrete(self.board_size), spaces.Discrete(self.board_size)))) for _ in range(self.num_players)
+            ]),
+            "locked_squares": spaces.Tuple([
+                spaces.Sequence(spaces.Tuple((spaces.Discrete(self.board_size), spaces.Discrete(self.board_size)))) for _ in range(self.num_players)
+            ]),
+            "current_player": spaces.Discrete(self.num_players, start=1)
         })
         """
         If human-rendering is used, `self.window` will be a reference
@@ -103,9 +121,10 @@ class BlokusEnv(gym.Env):
         human-mode. They will remain `None` until human-mode is used for the
         first time.
         """
-        self.mode = mode
+        self.testing_mode = testing_mode
         self.window = None
         self.clock = None
+        mode = "testing" if self.testing_mode else "non-testing"
         print(f"Initialised on {mode} mode")
         self.reset()
         
@@ -119,7 +138,7 @@ class BlokusEnv(gym.Env):
         super().reset(seed=seed)
         self.rng = np.random.default_rng(seed)
         # self.started = [False for _ in range(self.num_players + 1)]
-        self.board = np.zeros((self.board_size, self.board_size), dtype=np.int8)
+        self.board = np.zeros((self.board_size, self.board_size), dtype=np.uint8)
         self.current_player = 1
         self.agents_info = [0] + [BlokusEnvAgentInfo(player_id=i, available_pieces=BlokusEnv.pieces.keys()) for i in range(1, self.num_players + 1)]
 
@@ -145,26 +164,30 @@ class BlokusEnv(gym.Env):
             "state": np.array(self.board),  # 2D array of the current board state
             "possible_actions": np.array(self.possible_actions(self.current_player)),  # List of possible actions for the current player
             # "available_pieces": [piece_id for piece_id, piece in BlokusEnv.pieces.items() if not piece.used],  # List of unused pieces
-            "expander_squares": np.array(self.agents_info[self.current_player].expander_squares),  # Expander squares for the current player
-            "locked_squares": np.array(self.agents_info[self.current_player].locked_squares),  # Locked squares for the current player
+            "expander_squares": [
+                np.array(list(self.agents_info[(self.current_player + i - 1) % self.num_players + 1].expander_squares.keys())) for i in range(self.num_players)
+            ], # Expander squares for the current player
+            "locked_squares": [
+                np.array(list(self.agents_info[(self.current_player + i - 1) % self.num_players + 1].locked_squares)) for i in range(self.num_players)
+            ], # Locked squares for the current player
             "current_player": self.current_player  # ID of the current player
         }
 
-    def get_all_obs_two_players(self):
-        assert self.num_players == 2
-        return {
-            "n_players": self.num_players,  # Number of players in the game
-            "state": np.array(self.board),  # 2D array of the current board state
-            "expander_squares": [
-                self.agents_info[self.current_player].expander_squares, # Expander squares for the current player
-                self.agents_info[3 - self.current_player].expander_squares # Expander squares for the other player
-            ],
-            "locked_squares": [
-                self.agents_info[self.current_player].locked_squares, # Locked squares for the current player
-                self.agents_info[3 - self.current_player].locked_squares # Locked squares for the other player
-            ],
-            "current_player": self.current_player  # ID of the current player
-        }
+    # def get_all_obs_two_players(self):
+    #     assert self.num_players == 2
+    #     return {
+    #         # "n_players": self.num_players,  # Number of players in the game
+    #         # "state": np.array(self.board),  # 2D array of the current board state
+    #         "expander_squares": [
+    #             self.agents_info[self.current_player].expander_squares, # Expander squares for the current player
+    #             self.agents_info[3 - self.current_player].expander_squares # Expander squares for the other player
+    #         ],
+    #         "locked_squares": [
+    #             self.agents_info[self.current_player].locked_squares, # Locked squares for the current player
+    #             self.agents_info[3 - self.current_player].locked_squares # Locked squares for the other player
+    #         ],
+    #         # "current_player": self.current_player  # ID of the current player
+    #     }
     def _get_info(self):
         return {
         }
@@ -173,7 +196,7 @@ class BlokusEnv(gym.Env):
         state = {
             "current_player": self.current_player,
         }
-        state["board"] = np.zeros((self.board_size, self.board_size), dtype=np.int8)
+        state["board"] = np.zeros((self.board_size, self.board_size), dtype=np.uint8)
         for i in range(self.board_size):
             for j in range(self.board_size):
                 state["board"][i, j] = self.board[i, j]
@@ -253,6 +276,15 @@ class BlokusEnv(gym.Env):
         dx, dy = self.agents_info[player].expander_squares[expander] # first direction
         if (not self.legal_cell((x + dx, y), player)) and (not self.legal_cell((x, y + dy), player)):
             return 0
+        # # Option 1: Parallel computation
+        # def check_neighbor(idx, i, j):
+        #     neighbor = (x + dx * i, y + dy * j)
+        #     return (1 << idx) if self.legal_cell(neighbor, player) else 0
+
+        # neighborhood = sum(Parallel(n_jobs=-1)(delayed(check_neighbor)(idx, i, j) for idx, (i, j) in enumerate(BlokusEnv.NEIGHBOR_POS)))
+
+        # Option 2: Sequential computation
+        neighborhood = 0
         for idx, (i, j) in enumerate(BlokusEnv.NEIGHBOR_POS):
             neighbor = (x + dx * i, y + dy * j)
             if self.legal_cell(neighbor, player):
@@ -385,7 +417,7 @@ class BlokusEnv(gym.Env):
                 if (i + row, j + col) in self.agents_info[k].expander_squares:
                     self.agents_info[k].expander_squares.pop((i + row, j + col))
         
-        if self.mode == 'testing':
+        if self.testing_mode:
             raise ValueError("Testing mode")
             for i in range(1, self.num_players + 1):
                 try:
@@ -416,7 +448,7 @@ class BlokusEnv(gym.Env):
         actions = self.possible_actions_precomputed(player)
         self.agents_info[player].possible_actions = actions
         return actions
-        if self.mode == 'testing':
+        if self.testing_mode:
             efficient = self.possible_actions_efficient(player)
             self.efficient_time = end_time - start_time
 
@@ -631,8 +663,13 @@ class BlokusEnv(gym.Env):
             pygame.quit()
             print("Stopped")
 
-# Register the environment with Gymnasium
-gym.envs.registration.register(
-    id='gymnasium_env/Blokus-v0',
-    entry_point='gymnasium_env:BlokusEnv',
-)
+def register_blokus_env():
+    if "gymnasium_env/Blokus-v0" not in gym.envs.registry.keys():
+        gym.envs.registration.register(
+            id='gymnasium_env/Blokus-v0',
+            entry_point='gymnasium_env:BlokusEnv',
+        )
+
+if __name__ == "__main__":
+    # Register environment
+    register_blokus_env()

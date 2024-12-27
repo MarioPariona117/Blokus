@@ -12,14 +12,14 @@ class ABPruningAgent(MiniMaxAgent):
         assert depth >= -1, "Depth must be greater than or equal to -1"
         self.depth = depth if depth >= 0 else 10000
         self.board_size = board_size
-        self.env = gym.make('gymnasium_env/Blokus-v0', board_size=board_size, num_players=2, render_mode='console', render_scale=10, disable_env_checker=True, neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", mode = "good")
+        self.env = gym.make('gymnasium_env/Blokus-v0', board_size=board_size, num_players=2, render_mode='console', render_scale=10, disable_env_checker=True, neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", testing_mode=False)
         self.env = self.env.unwrapped
         self.env.order_enforce = False
         self.use_cache = use_cache
         if self.use_cache:
             self.cache_path = f"{cache_dir}/alpha_beta_depth{depth}_bz{board_size}.pkl"
             self.load_cache()
-        self.sorted_order = lambda x: mine(self.env, x)
+        self.sorted_order = lambda x: mine(self.env, x[0], x[1])
         self.need_step = True
         ##############################
         self.num_pruned = 0
@@ -50,7 +50,7 @@ class ABPruningAgent(MiniMaxAgent):
         stopped = False
 
         state = self.env.capture_state()
-        sorted_actions = sorted(obs["possible_actions"], key=self.sorted_order)
+        sorted_actions = sorted(obs["possible_actions"], key=lambda x: self.sorted_order((obs, x)))
         if depth == self.depth:
             sorted_actions = tqdm(sorted_actions)
         for action in sorted_actions:
@@ -109,20 +109,19 @@ def piece_size(env, action):
     psz = len(env.pieces[pid].transformations[pt].shape)
     return -psz
 
-def maximise_my_expanders(env: BlokusEnv, action):
+def maximise_my_expanders(env: BlokusEnv, obs, action):
     state = env.capture_state()
-    obs = env.get_all_obs_two_players()
     player = obs["current_player"]
-    _, reward, term, trunc, info = env.step(action)
-    new_obs = env.get_all_obs_two_players()
+    new_obs, reward, term, trunc, info = env.step(action)
+    # new_obs = env.get_all_obs_two_players()
     new_player = new_obs["current_player"]
     value = len(new_obs["expander_squares"][player != new_player]) - len(obs["expander_squares"][player != new_player])
     env.restore_state(state)
     return -value
 
-def mine(env, action):
+def mine(env, obs, action):
     # xd = maximise_my_expanders(env, action)
-    return (piece_size(env, action), maximise_my_expanders(env, action))
+    return (piece_size(env, action), maximise_my_expanders(env, obs, action))
 
 def minimise_opponent_expanders(env, action):
     state = env.capture_state()
