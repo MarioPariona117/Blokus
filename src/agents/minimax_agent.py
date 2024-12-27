@@ -34,12 +34,14 @@ class MiniMaxAgent(Agent):
         return random.choice(good_actions)
     
     def save_cache(self):
+        if not self.use_cache:
+            return
         if self.cache_path is not None:
             with open(self.cache_path, 'wb') as file:
                 pickle.dump(self.cache, file)
 
     def load_cache(self):
-        if self.cache_path is not None and os.path.exists(self.cache_path):
+        if self.use_cache and self.cache_path is not None and os.path.exists(self.cache_path):
             with open(self.cache_path, 'rb') as file:
                 self.cache = pickle.load(file)
             print(f"Cache loaded for MiniMaxAgent with depth {self.depth} and board size {self.board_size}")

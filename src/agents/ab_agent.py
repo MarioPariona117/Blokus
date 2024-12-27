@@ -7,7 +7,7 @@ from tqdm import tqdm
 from gymnasium_env.envs.blokus_env import BlokusEnv
 
 class ABPruningAgent(MiniMaxAgent):
-    def __init__(self, board_size, name="ABPruning", depth=100, cache_dir = "/Users/mario/Documents/proj/cam/Blokus/src/agents/cache/ab_pruning"):
+    def __init__(self, board_size, name="ABPruning", depth=100, cache_dir = "/Users/mario/Documents/proj/cam/Blokus/src/agents/cache/ab_pruning", use_cache=True):
         self.name = name
         assert depth >= -1, "Depth must be greater than or equal to -1"
         self.depth = depth if depth >= 0 else 10000
@@ -15,8 +15,10 @@ class ABPruningAgent(MiniMaxAgent):
         self.env = gym.make('gymnasium_env/Blokus-v0', board_size=board_size, num_players=2, render_mode='console', render_scale=10, disable_env_checker=True, neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", mode = "good")
         self.env = self.env.unwrapped
         self.env.order_enforce = False
-        self.cache_path = f"{cache_dir}/alpha_beta_depth{depth}_bz{board_size}.pkl"
-        self.load_cache()
+        self.use_cache = use_cache
+        if self.use_cache:
+            self.cache_path = f"{cache_dir}/alpha_beta_depth{depth}_bz{board_size}.pkl"
+            self.load_cache()
         self.sorted_order = lambda x: mine(self.env, x)
         self.need_step = True
         ##############################
@@ -26,7 +28,7 @@ class ABPruningAgent(MiniMaxAgent):
 
     def get_action(self, env, obs):
         encoded_board = encode_board_string(obs["state"])
-        if encoded_board in self.cache:
+        if self.use_cache and encoded_board in self.cache:
             return self.cache[encoded_board]["action"]
         state = env.capture_state()
         self.env.restore_state(state)
@@ -87,10 +89,11 @@ class ABPruningAgent(MiniMaxAgent):
             
             self.env.restore_state(state)
         if not stopped:
-            self.cache[encode_board_string(obs["state"])] = {
-                "action": best_action,
-                "value": best_value
-            }
+            if self.use_cache:
+                self.cache[encode_board_string(obs["state"])] = {
+                    "action": best_action,
+                    "value": best_value
+                }
         return best_action, best_value
     
 # SORTING HEURISTICS #
