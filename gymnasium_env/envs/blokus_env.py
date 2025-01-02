@@ -140,7 +140,7 @@ class BlokusEnv(gym.Env):
         # self.started = [False for _ in range(self.num_players + 1)]
         self.board = np.zeros((self.board_size, self.board_size), dtype=np.uint8)
         self.current_player = 1
-        self.agents_info = [0] + [BlokusEnvAgentInfo(player_id=i, available_pieces=BlokusEnv.pieces.keys()) for i in range(1, self.num_players + 1)]
+        self.agents_info = [BlokusEnvAgentInfo(player_id=i, available_pieces=BlokusEnv.pieces.keys()) for i in range(0, self.num_players + 1)]
 
         if self.num_players == 1:
             self.agents_info[1].expander_squares = {(0, 0):(1, 1)}
@@ -165,10 +165,10 @@ class BlokusEnv(gym.Env):
             "possible_actions": np.array(self.possible_actions(self.current_player)),  # List of possible actions for the current player
             # "available_pieces": [piece_id for piece_id, piece in BlokusEnv.pieces.items() if not piece.used],  # List of unused pieces
             "expander_squares": [
-                np.array(list(self.agents_info[(self.current_player + i - 1) % self.num_players + 1].expander_squares.keys())) for i in range(self.num_players)
+                np.array(list(self.agents_info[i].expander_squares.keys())) for i in range(0, self.num_players + 1)
             ], # Expander squares for the current player
             "locked_squares": [
-                np.array(list(self.agents_info[(self.current_player + i - 1) % self.num_players + 1].locked_squares)) for i in range(self.num_players)
+                np.array(list(self.agents_info[i].locked_squares)) for i in range(0, self.num_players + 1)
             ], # Locked squares for the current player
             "current_player": self.current_player  # ID of the current player
         }

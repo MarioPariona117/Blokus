@@ -1,10 +1,11 @@
 import numpy as np
 import gymnasium as gym
 import random
-from .minimax_agent import MiniMaxAgent
+from ..minimax_agent import MiniMaxAgent
 from src.utils import encode_board_string, decode_board_string
 from tqdm import tqdm
 from gymnasium_env.envs.blokus_env import BlokusEnv
+from .heuristics import mine
 
 class ABPruningAgent(MiniMaxAgent):
     def __init__(self, board_size, name="ABPruning", depth=100, cache_dir = "/Users/mario/Documents/proj/cam/Blokus/src/agents/cache/ab_pruning", use_cache=True):
@@ -50,12 +51,18 @@ class ABPruningAgent(MiniMaxAgent):
         stopped = False
 
         state = self.env.capture_state()
-        sorted_actions = sorted(obs["possible_actions"], key=lambda x: self.sorted_order((obs, x)))
+        actions = obs["possible_actions"]
+        # for action in actions:
+        #     print(self.env._action_to_tuple(action))
+        # exit(0)
+        sorted_actions = sorted(actions, key=lambda x: self.sorted_order((obs, x)))
+
         if depth == self.depth:
             sorted_actions = tqdm(sorted_actions)
         for action in sorted_actions:
             if depth == self.depth:
-                sorted_actions.set_description(f"BValue: {best_value}, BAction: {self.env._action_to_tuple(best_action)}, CAction: {self.env._action_to_tuple(action)},")
+                sorted_actions.set_description(f"BValue: {best_value}, BAction: {self.env._action_to_tuple(best_action)}, CAction: {self.env._action_to_tuple(action)})")
+                mine(self.env, obs, action, print_=True)
                 sorted_actions.refresh()
             r, c, pid, pt = self.env._action_to_tuple(action)
             psz = len(self.env.pieces[pid].transformations[pt].shape)
@@ -103,64 +110,3 @@ class ABPruningAgent(MiniMaxAgent):
 # 4. average distance among new expanders (seems powerful, but maybe no)
 # 5. guided q-value (maybe)
 ##
-
-def piece_size(env, action):
-    r, c, pid, pt = env._action_to_tuple(action)
-    psz = len(env.pieces[pid].transformations[pt].shape)
-    return -psz
-
-def maximise_my_expanders(env: BlokusEnv, obs, action):
-    state = env.capture_state()
-    player = obs["current_player"]
-    new_obs, reward, term, trunc, info = env.step(action)
-    # new_obs = env.get_all_obs_two_players()
-    new_player = new_obs["current_player"]
-    value = len(new_obs["expander_squares"][player != new_player]) - len(obs["expander_squares"][player != new_player])
-    env.restore_state(state)
-    return -value
-
-def mine(env, obs, action):
-    # xd = maximise_my_expanders(env, action)
-    return (piece_size(env, action), maximise_my_expanders(env, obs, action))
-
-def minimise_opponent_expanders(env, action):
-    state = env.capture_state()
-    obs = env.get_all_obs_two_players()
-    player = obs["current_player"]
-    _, reward, term, trunc, info = env.step(action)
-    new_obs = env.get_all_obs_two_players()
-    new_player = new_obs["current_player"]
-    value = len(new_obs["expander_squares"][player == new_player]) - len(obs["expander_squares"][player == new_player])
-    env.restore_state(state)
-    return value
-    pass
-
-def maximise_our_expanders_difference(env, action):
-    state = env.capture_state()
-    obs = env.get_all_obs_two_players()
-    player = obs["current_player"]
-    _, reward, term, trunc, info = env.step(action)
-    new_obs = env.get_all_obs_two_players()
-    new_player = new_obs["current_player"]
-    value = len(new_obs["expander_squares"][player == new_player]) - len(obs["expander_squares"][player == new_player])
-    value -= 2 * len(new_obs["expander_squares"][player != new_player]) - 2 * len(obs["expander_squares"][player != new_player])
-    value += random.uniform(-0.5, 0.5)
-    env.restore_state(state)
-    return value
-    pass
-
-def minimise_our_locked(env, action):
-    pass
-
-def maximise_opponent_locked(env, action):
-    pass
-
-def minimise_our_locked_difference(env, action):
-    pass
-
-def average_distance_among_new_expanders(env, action):
-    # just do bfs between each pair of new expanders, computing distance for opponent (not locked)
-    pass
-
-def guided_q_value(env, action):
-    pass
