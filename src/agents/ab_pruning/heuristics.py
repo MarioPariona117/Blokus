@@ -1,93 +1,105 @@
 from gymnasium_env.envs.blokus_env import BlokusEnv
+from ...utils import env_action_context
+from gymnasium_env.envs.blokus_env import ObsType, ActType
 
-levels = {
-    "F" : 0,
-    "X": 1,
-    "W": 2,
-    "Y": 3,
-    "N": 4,
-    "T5": 5,
-    "L5": 6,
-    "Z5": 7,
-    "V5": 8,
-    "I5": 9,
-    "P": 10,
-    "U": 11,
-    "L4": 12,
-    "T4": 13,
-    "Z4": 14,
-    "I4": 15,
-    "O": 16,
-    "V3": 17,
-    "I3": 18,
-    "2": 19,
-    "1": 20
-}
+def div(a, b):
+    return a / b if b != 0 else 100
 
-def piece_size(env, action):
+levels = [[] for _ in range(40)]
+
+levels[7] = ["F", "X", "W", "Y", "N", "T5", "Z5", "V5", "L5", "P", "I5", "U", "T4", "Z4", "L4", "I4", "O", "V3", "I3", "2", "1"]
+
+levels[5] = ["L5", "F", "X", "W", "Y", "N", "T5", "Z5", "V5", "P", "I5", "U", "T4", "Z4", "L4", "I4", "O", "V3", "I3", "2", "1"]
+
+for l in range(40):
+    cnt = 0
+    d = {}
+    for i in levels[l]:
+        d[i] = cnt
+        cnt += 1
+    levels[l] = d
+
+def level_7(env: BlokusEnv, obs: ObsType, action: ActType) -> int:
+    return levels[7][env._action_to_tuple(action)[2]]
+
+def level_5(env: BlokusEnv, obs: ObsType, action: ActType) -> int:
+    return levels[5][env._action_to_tuple(action)[2]]
+
+def piece_size(env: BlokusEnv, obs: ObsType, action: ActType) -> int:
     r, c, pid, pt = env._action_to_tuple(action)
     psz = len(env.pieces[pid].transformations[pt].shape)
     return -psz
 
-def maximise_my_expanders(env: BlokusEnv, obs, action):
-    state = env.capture_state()
-    player = obs["current_player"]
-    new_obs, reward, term, trunc, info = env.step(action)
-    new_player = new_obs["current_player"]
-    value = len(new_obs["expander_squares"][player != new_player])
-    env.restore_state(state)
-    return -value
+def maximise_our_expanders_difference(env: BlokusEnv, obs: ObsType, action: ActType, wa: float = 1, wb: float = 3, print_: bool = False) -> float:
+    with env_action_context(env, action) as new_obs:
+        return maximise_our_expanders_difference_(obs, new_obs, action, wa, wb, print_)
 
-def mine(env, obs, action, print_=False):
-    # xd = maximise_my_expanders(env, action)
-    # return (piece_size(env, action), maximise_our_expanders_difference(env, obs, action, print_), levels[env._action_to_tuple(action)[2]])
-    return (piece_size(env, action))
-
-# def minimise_opponent_expanders(env, action):
-    # state = env.capture_state()
-    # obs = env.get_all_obs_two_players()
-    # player = obs["current_player"]
-    # _, reward, term, trunc, info = env.step(action)
-    # new_obs = env.get_all_obs_two_players()
-    # new_player = new_obs["current_player"]
-    # value = len(new_obs["expander_squares"][player == new_player])
-    # env.restore_state(state)
-    # return value
-    # pass
-def div(a, b):
-    return a / b if b != 0 else 100
-
-def maximise_our_expanders_difference(env: BlokusEnv, obs, action, print_=False):
-    state = env.capture_state()
-    new_obs, reward, term, trunc, info = env.step(action)
+def maximise_our_expanders_difference_(obs: ObsType, new_obs: ObsType, action: ActType, wa: float = 1, wb: float = 3, print_: bool = False) -> float:
     player = obs["current_player"]
     a = (len(new_obs["expander_squares"][player])) # our expanders
     b = (len(new_obs["expander_squares"][3 - player])) # opponent expanders
-    # if a == 5 and b == 2:
-    #     print("Heyyy, we got a 5 and 2")
-    value = (a - b * 2)
-    # value = div(a, b) - div(b, a) - (b - a) * 0.22
-    # value = (div(a, b) + div(b, a)) * (a - b)
-    # value = (div(a, b) + div(b, a)) * (a - b)
+    value = (a * wa - b * wb)
+    
     if print_:
+        print(f"Value: {value}, Our Expanders: {a}, Opponent Expanders: {b}, Weight A: {wa}, Weight B: {wb}")
         print(f"Value: {value}, A: {a}, B: {b}")
-    # value += random.uniform(-0.5, 0.5)
-    env.restore_state(state)
+
     return -value
+
+def maximise_my_expanders(env: BlokusEnv, obs: ObsType, action: ActType) -> float:
+    return maximise_our_expanders_difference(env, obs, action, wa = 1, wb = 0)
+
+def maximise_my_expanders_(obs: ObsType, new_obs: ObsType, action: ActType) -> float:
+    return maximise_our_expanders_difference_(obs, new_obs, action, wa=1, wb=0)
+
+def minimise_opponent_expanders(env: BlokusEnv, obs: ObsType, action: ActType) -> float:
+    return maximise_our_expanders_difference(env, obs, action, wa=0, wb=1)
+
+def minimise_opponent_expanders_(obs: ObsType, new_obs: ObsType, action: ActType) -> float:
+    return maximise_our_expanders_difference_(obs, new_obs, action, wa=0, wb=1)
+
+def my_heu(env: BlokusEnv, obs: ObsType, action: ActType, print_: bool = False) -> float:
+    # current_depth = obs["steps"]
+    
+    # if current_depth < 3:
+    #     return level(env, obs, action)
+    
+    with env_action_context(env, action) as new_obs:
+        return (
+            mine_(obs, new_obs, action) * mine2_(env, obs, new_obs, action),
+            # level(env, obs, action)
+        )
+    
+def mine_(obs: ObsType, new_obs: ObsType, action: ActType) -> float:
+    player = obs["current_player"]
+    a = len(new_obs["expander_squares"][player])  # our expanders
+    b = len(new_obs["expander_squares"][3 - player])  # opponent expanders
+    value = div(a, b) - div(b, a) - (b - a) * 0.22
+    return -value
+
+def mine2_(obs: ObsType, new_obs: ObsType, action: ActType) -> float:
+    player = obs["current_player"]
+    a = len(new_obs["expander_squares"][player])  # our expanders
+    b = len(new_obs["expander_squares"][3 - player])  # opponent expanders
+    value = (div(a, b) + div(b, a)) * abs(a - b)
+    return value
+
+# def # value = div(a, b) - div(b, a) - (b - a) * 0.22
+    # value = (div(a, b) + div(b, a)) * (a - b)
+    # value = (div(a, b) + div(b, a)) * (a - b)
+
+def minimise_our_locked(env, obs, action):
     pass
 
-def minimise_our_locked(env, action):
+def maximise_opponent_locked(env, obs, action):
     pass
 
-def maximise_opponent_locked(env, action):
+def minimise_our_locked_difference(env, obs, action):
     pass
 
-def minimise_our_locked_difference(env, action):
-    pass
-
-def average_distance_among_new_expanders(env, action):
+def average_distance_among_new_expanders(env, obs, action):
     # just do bfs between each pair of new expanders, computing distance for opponent (not locked)
     pass
 
-def guided_q_value(env, action):
+def guided_q_value(env, obs, action):
     pass

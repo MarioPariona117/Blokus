@@ -11,6 +11,8 @@ __pycache__/
 .DS_Store
 gymnasium_env/.DS_Store
 .vscode/
+.tmp.driveupload/
+profile_output
 
 ## models
 *.pkl

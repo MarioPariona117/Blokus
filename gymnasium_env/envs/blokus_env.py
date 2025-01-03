@@ -3,22 +3,16 @@ from gymnasium import spaces
 import numpy as np
 from typing import Tuple, Any, Dict, List
 from gymnasium.core import ObsType, ActType
-from gymnasium_env.envs.auxiliary.utils import decode, encode
-
-# ActType = Tuple[int, int, int]
-
-from . import BlokusPieceTransformations
 import pygame
 import time
 
-"""
-    Agents or Players
-    How to model actions?
-"""
+from gymnasium_env.envs.auxiliary.utils import decode, encode
+from . import BlokusPieceTransformations, BlokusPiece
 
 class BlokusEnvAgentInfo:
     """Class to store information about a Blokus agent, including the player ID and available pieces."""
     def __init__(self, player_id, available_pieces: List[str]):
+        self.points = 0
         self.player_id = player_id
         self.available_pieces = set(list(available_pieces))
         self.expander_squares = {}
@@ -42,7 +36,6 @@ class BlokusEnv(gym.Env):
     # NEIGHBORHOOD_TO_ENCODED_ACTIONS = None
     initialization_total_time = 0
     different_pieces = 0
-
     # @classmethod
     def load_neighborhood(neighborhood_dir):
         if BlokusEnv.NEIGHBOR_POS is None:
@@ -55,6 +48,7 @@ class BlokusEnv(gym.Env):
             )
         else:
             print("Neighborhood already loaded")
+            
     def __init__(
         self, 
         render_mode='console', 
@@ -83,10 +77,10 @@ class BlokusEnv(gym.Env):
                     BlokusEnv._get_piece_info.append((BlokusEnv.PIECE_IDS[i], j))
 
             assert len(BlokusEnv._get_piece_info) == BlokusEnv.different_pieces
-        print(f"Before loading: {BlokusEnv.NEIGHBOR_POS is None}")
+        # print(f"Before loading: {BlokusEnv.NEIGHBOR_POS is None}")
         if neighborhood_dir:
             BlokusEnv.load_neighborhood(neighborhood_dir)
-        print(f"After loading: {BlokusEnv.NEIGHBOR_POS is None}")
+        # print(f"After loading: {BlokusEnv.NEIGHBOR_POS is None}")
         ## ACTIONS DECODING/ENCODING ##
         # f: (row, col, piece_id, piece_transformation) -> action [0, board_size*board_size*91]
         
@@ -140,6 +134,7 @@ class BlokusEnv(gym.Env):
         # self.started = [False for _ in range(self.num_players + 1)]
         self.board = np.zeros((self.board_size, self.board_size), dtype=np.uint8)
         self.current_player = 1
+        self.steps = 0
         self.agents_info = [BlokusEnvAgentInfo(player_id=i, available_pieces=BlokusEnv.pieces.keys()) for i in range(0, self.num_players + 1)]
 
         if self.num_players == 1:
@@ -170,24 +165,10 @@ class BlokusEnv(gym.Env):
             "locked_squares": [
                 np.array(list(self.agents_info[i].locked_squares)) for i in range(0, self.num_players + 1)
             ], # Locked squares for the current player
-            "current_player": self.current_player  # ID of the current player
+            "current_player": self.current_player, # ID of the current player
+            "points": [self.agents_info[i].points for i in range(0, self.num_players + 1)],
+            "steps": self.steps
         }
-
-    # def get_all_obs_two_players(self):
-    #     assert self.num_players == 2
-    #     return {
-    #         # "n_players": self.num_players,  # Number of players in the game
-    #         # "state": np.array(self.board),  # 2D array of the current board state
-    #         "expander_squares": [
-    #             self.agents_info[self.current_player].expander_squares, # Expander squares for the current player
-    #             self.agents_info[3 - self.current_player].expander_squares # Expander squares for the other player
-    #         ],
-    #         "locked_squares": [
-    #             self.agents_info[self.current_player].locked_squares, # Locked squares for the current player
-    #             self.agents_info[3 - self.current_player].locked_squares # Locked squares for the other player
-    #         ],
-    #         # "current_player": self.current_player  # ID of the current player
-    #     }
     def _get_info(self):
         return {
         }
@@ -195,6 +176,8 @@ class BlokusEnv(gym.Env):
     def capture_state(self):
         state = {
             "current_player": self.current_player,
+            "points": [self.agents_info[i].points for i in range(0, self.num_players + 1)],
+            "steps": self.steps
         }
         state["board"] = np.zeros((self.board_size, self.board_size), dtype=np.uint8)
         for i in range(self.board_size):
@@ -211,6 +194,7 @@ class BlokusEnv(gym.Env):
             else:
                 state["agents_info"][i]["possible_actions"] = None
             state["agents_info"][i]["started"] = self.agents_info[i].started
+        
         return state
 
     def restore_state(self, state):
@@ -218,6 +202,7 @@ class BlokusEnv(gym.Env):
             for j in range(self.board_size):
                 self.board[i, j] = state["board"][i, j]
         self.current_player = state["current_player"]
+        self.steps = state["steps"]
         for i in range(1, self.num_players + 1):
             self.agents_info[i].player_id = i
             self.agents_info[i].available_pieces = set(state["agents_info"][i]["available_pieces"])
@@ -228,6 +213,7 @@ class BlokusEnv(gym.Env):
             else:
                 self.agents_info[i].possible_actions = None
             self.agents_info[i].started = state["agents_info"][i]["started"]
+            self.agents_info[i].points = state["points"][i]
 
     def legal_cell(self, pos, player):
         return (
@@ -238,10 +224,15 @@ class BlokusEnv(gym.Env):
         )
     
     def _tuple_to_action(self, action):
-            return action[0] * self.board_size * BlokusEnv.different_pieces + action[1] * BlokusEnv.different_pieces + BlokusEnv.pieces[action[2]].transformations[action[3]].idx
+        assert isinstance(action, tuple) and len(action) == 4, "Action must be a tuple of 4 elements"
+        return np.int16(action[0]) * self.board_size * BlokusEnv.different_pieces + np.int16(action[1]) * BlokusEnv.different_pieces + BlokusEnv.pieces[action[2]].transformations[action[3]].idx
 
     def _action_to_tuple(self, action):
-        return (action // (BlokusEnv.different_pieces * self.board_size), (action // BlokusEnv.different_pieces) % self.board_size, *BlokusEnv._get_piece_info[action % BlokusEnv.different_pieces])
+        return (
+            np.int8(action // (BlokusEnv.different_pieces * self.board_size)),
+            np.int8((action // BlokusEnv.different_pieces) % self.board_size),
+            *BlokusEnv._get_piece_info[int(action % BlokusEnv.different_pieces)]
+        )
     
     @staticmethod
     def get_actions_from_neighborhood(neighborhood: int) -> List[int]:
@@ -342,6 +333,7 @@ class BlokusEnv(gym.Env):
         """
         row, col, piece_id, piece_transformation = action_parameters
         piece = BlokusEnv.pieces[piece_id].transformations[piece_transformation]
+        can_place = True
         if check:
             if not piece.id in self.agents_info[player].available_pieces:
                 print("Piece already used")
@@ -358,9 +350,7 @@ class BlokusEnv(gym.Env):
                     return False
                 if (board_row, board_col) in self.agents_info[player].expander_squares:
                     can_place = True #### TOUCHES A CORNER PIECE ####
-        else:
-            if not place:
-                return True
+        
         if not can_place:
             return False
         
@@ -389,12 +379,13 @@ class BlokusEnv(gym.Env):
             self.agents_info[i].locked_squares = self.get_locked_squares(i)
             self.agents_info[i].expander_squares = self.get_expander_squares(i)
             
-    def faster_update_attributes(self, player, row, col, piece):
+    def faster_update_attributes(self, player, row: int, col: int, piece: BlokusPiece):
         ### UPDATE OTHER ATTRIBUTES TO MAKE IT FASTER ###
         ### EXAMPLE: LOCKED/EXPANDER SQUARES ###
         for i in range(1, self.num_players + 1):
             self.agents_info[i].possible_actions = None
 
+        assert 1 <= player <= self.num_players
         self.agents_info[player].available_pieces.remove(piece.id)
         self.agents_info[player].started = True
 
@@ -510,7 +501,7 @@ class BlokusEnv(gym.Env):
         actions = set()
         for expander in self.agents_info[player].expander_squares:
             actions.update(self.possible_actions_precomputed_expander_square(expander, player))
-        return np.array(list(actions))
+        return np.array(list(actions), dtype=np.int16)
     
     def possible_actions_precomputed_expander_square(self, expander, player: int) -> ActType:
         """Generate all possible moves for a player by checking each piece and transformation using precomputed data for a single expander square."""
@@ -570,7 +561,7 @@ class BlokusEnv(gym.Env):
         """Execute a step by making the player’s move and updating the current player."""
         row, col, piece_id, piece_transformation = self._action_to_tuple(action)
 
-        if(not self.place_piece(action_parameters=(row, col, piece_id, piece_transformation), player=self.current_player)):
+        if(not self.place_piece(action_parameters=(row, col, piece_id, piece_transformation), player=self.current_player, check=True)):
             print("Invalid move")
             print("Piece:", piece_id, "Transformation:", piece_transformation, "Row:", row, "Col:", col)
             print("Current player:", self.current_player)
@@ -581,6 +572,9 @@ class BlokusEnv(gym.Env):
             info = self._get_info()
             return observation, self.BAD_MOVE_PUNISHMENT, True, True, info
         
+        self.steps +=1
+        reward = len(BlokusEnv.pieces[piece_id].transformations[piece_transformation].shape)
+        self.agents_info[self.current_player].points += reward
         self.current_player = (self.current_player % self.num_players) + 1
         passed = 0
         while passed < self.num_players and len(self.possible_actions(self.current_player)) == 0:
@@ -592,12 +586,12 @@ class BlokusEnv(gym.Env):
         else:
             terminated = False
             
-        reward = len(BlokusEnv.pieces[piece_id].transformations[piece_transformation].shape)
         observation = self._get_obs()
         info = self._get_info()
         
         if self.render_mode == "human":
             self._render_frame()
+
 
         return observation, reward, terminated, False, info
 
