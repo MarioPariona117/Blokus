@@ -9,7 +9,7 @@ from gymnasium.core import ObsType, ActType
 from tqdm import tqdm
 from ..minimax_agent import MiniMaxAgent
 from src.utils import encode_board_string, decode_board_string, time_function
-from gymnasium_env.envs.blokus_env import BlokusEnv
+from gymnasium_env.envs.blokus_env import BlokusEnv, BlokusAction, BlokusPieceManager
 from .heuristics import my_heu
 from .cache_manager import CacheManager
 
@@ -94,7 +94,8 @@ class ABPruningAgent(MiniMaxAgent):
         stopped = False
 
         state = self.env.capture_state()
-        actions = obs["possible_actions"]
+        action_ids = obs["possible_actions"]
+        actions = [BlokusAction(board_size=self.board_size, action_id=action_id) for action_id in action_ids]
         # for action in actions:
         #     print(self.env._action_to_tuple(action))
         # exit(0)
@@ -105,12 +106,11 @@ class ABPruningAgent(MiniMaxAgent):
         for action in sorted_actions:
             if self.testing_mode:
                 if depth >= self.depth - self.depth_diff_test:
-                    sorted_actions.set_description(f"BValue: {best_value}, BAction: {self.env._action_to_tuple(best_action)}, CAction: {self.env._action_to_tuple(action)})")
+                    sorted_actions.set_description(f"BValue: {best_value}, BAction: {best_action}, CAction: {action})")
                     # mine(self.env, obs, action, print_=True)
                     sorted_actions.refresh()
-            r, c, pid, pt = self.env._action_to_tuple(action)
-            psz = len(self.env.pieces[pid].transformations[pt].shape)
-            new_obs, new_reward, term, trunc, _ = self.env.step(action)
+            psz = BlokusPieceManager.get_piece_size(action.shape_id)
+            new_obs, new_reward, term, trunc, _ = self.env.step(action.action_id)
             assert psz == new_reward
             assert not trunc
             if term:
@@ -141,8 +141,8 @@ class ABPruningAgent(MiniMaxAgent):
                 break
         if best_value > theta or not stopped:
             if self.use_cache:
-                self.cache_manager.update_cache(encode_board_string(obs["state"]), best_action, best_value)
-        return best_action, best_value
+                self.cache_manager.update_cache(encode_board_string(obs["state"]), best_action.action_id, best_value)
+        return best_action.action_id, best_value
     
     def save_cache(self):
         if self.use_cache:

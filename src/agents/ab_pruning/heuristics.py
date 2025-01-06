@@ -1,6 +1,6 @@
 from gymnasium_env.envs.blokus_env import BlokusEnv
 from ...utils import env_action_context
-from gymnasium_env.envs.blokus_env import ObsType, ActType
+from gymnasium_env.envs.blokus_env import ObsType, BlokusAction, BlokusAction, BlokusPieceManager
 
 def div(a, b):
     return a / b if b != 0 else 100
@@ -19,22 +19,21 @@ for l in range(40):
         cnt += 1
     levels[l] = d
 
-def level_7(env: BlokusEnv, obs: ObsType, action: ActType) -> int:
-    return levels[7][env._action_to_tuple(action)[2]]
+def level_7(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> int:
+    return levels[7][action.shape_id]
 
-def level_5(env: BlokusEnv, obs: ObsType, action: ActType) -> int:
-    return levels[5][env._action_to_tuple(action)[2]]
+def level_5(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> int:
+    return levels[5][action.shape_id]
 
-def piece_size(env: BlokusEnv, obs: ObsType, action: ActType) -> int:
-    r, c, pid, pt = env._action_to_tuple(action)
-    psz = len(env.pieces[pid].transformations[pt].shape)
+def piece_size(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> int:
+    psz = BlokusPieceManager.get_piece_shape(action.shape_id)
     return -psz
 
-def maximise_our_expanders_difference(env: BlokusEnv, obs: ObsType, action: ActType, wa: float = 1, wb: float = 3, print_: bool = False) -> float:
+def maximise_our_expanders_difference(env: BlokusEnv, obs: ObsType, action: BlokusAction, wa: float = 1, wb: float = 3, print_: bool = False) -> float:
     with env_action_context(env, action) as new_obs:
         return maximise_our_expanders_difference_(obs, new_obs, action, wa, wb, print_)
 
-def maximise_our_expanders_difference_(obs: ObsType, new_obs: ObsType, action: ActType, wa: float = 1, wb: float = 3, print_: bool = False) -> float:
+def maximise_our_expanders_difference_(obs: ObsType, new_obs: ObsType, action: BlokusAction, wa: float = 1, wb: float = 3, print_: bool = False) -> float:
     player = obs["current_player"]
     a = (len(new_obs["expander_squares"][player])) # our expanders
     b = (len(new_obs["expander_squares"][3 - player])) # opponent expanders
@@ -46,19 +45,19 @@ def maximise_our_expanders_difference_(obs: ObsType, new_obs: ObsType, action: A
 
     return -value
 
-def maximise_my_expanders(env: BlokusEnv, obs: ObsType, action: ActType) -> float:
+def maximise_my_expanders(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> float:
     return maximise_our_expanders_difference(env, obs, action, wa = 1, wb = 0)
 
-def maximise_my_expanders_(obs: ObsType, new_obs: ObsType, action: ActType) -> float:
+def maximise_my_expanders_(obs: ObsType, new_obs: ObsType, action: BlokusAction) -> float:
     return maximise_our_expanders_difference_(obs, new_obs, action, wa=1, wb=0)
 
-def minimise_opponent_expanders(env: BlokusEnv, obs: ObsType, action: ActType) -> float:
+def minimise_opponent_expanders(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> float:
     return maximise_our_expanders_difference(env, obs, action, wa=0, wb=1)
 
-def minimise_opponent_expanders_(obs: ObsType, new_obs: ObsType, action: ActType) -> float:
+def minimise_opponent_expanders_(obs: ObsType, new_obs: ObsType, action: BlokusAction) -> float:
     return maximise_our_expanders_difference_(obs, new_obs, action, wa=0, wb=1)
 
-def my_heu(env: BlokusEnv, obs: ObsType, action: ActType, print_: bool = False) -> float:
+def my_heu(env: BlokusEnv, obs: ObsType, action: BlokusAction, print_: bool = False) -> float:
     # current_depth = obs["steps"]
     
     # if current_depth < 3:
@@ -70,18 +69,20 @@ def my_heu(env: BlokusEnv, obs: ObsType, action: ActType, print_: bool = False) 
             # level(env, obs, action)
         )
     
-def mine_(obs: ObsType, new_obs: ObsType, action: ActType) -> float:
+def mine_(obs: ObsType, new_obs: ObsType, action: BlokusAction) -> float:
     player = obs["current_player"]
     a = len(new_obs["expander_squares"][player])  # our expanders
     b = len(new_obs["expander_squares"][3 - player])  # opponent expanders
     value = div(a, b) - div(b, a) - (b - a) * 0.22
+    print(a, b, -value)
     return -value
 
-def mine2_(obs: ObsType, new_obs: ObsType, action: ActType) -> float:
+def mine2_(obs: ObsType, new_obs: ObsType, action: BlokusAction) -> float:
     player = obs["current_player"]
     a = len(new_obs["expander_squares"][player])  # our expanders
     b = len(new_obs["expander_squares"][3 - player])  # opponent expanders
     value = (div(a, b) + div(b, a)) * abs(a - b)
+    print(a, b, value)
     return value
 
 # def # value = div(a, b) - div(b, a) - (b - a) * 0.22
