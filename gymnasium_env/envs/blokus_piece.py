@@ -39,122 +39,151 @@ PIECE_SHAPE_IDS = list(SAMPLE_SHAPE.keys())
 
 class BlokusPiece:
     def __init__(
-            self, 
-            shape_id: str, 
-            shape: List[Vector2], 
-            dimensions: Vector2, 
-            expanders: Dict[Vector2, List[Vector2]], 
+            self,
+            shape_id: str,
+            body: List[Vector2],
+            dimensions: Vector2,
+            expanders: Dict[Vector2, List[Vector2]],
             locked: List[Vector2],
             print_scale: int = 2
         ):
-        self.idx = None
-        self.shape_id = shape_id
-        self.shape = shape
-        self.dimensions = dimensions
-        self.expanders = expanders
-        self.locked = locked
-        self.print_scale = print_scale
+        self._idx = None ### from 0-90
+        self._shape_id = shape_id
+        self._dimensions = dimensions
+        self._body = body
+        self._expanders = expanders
+        self._locked = locked
+        self._print_scale = print_scale
 
     def __str__(self) -> str:
-        max_x = max(pos.x for pos in self.shape)
-        max_y = max(pos.y for pos in self.shape)
-        grid = np.full((max_x * self.print_scale + self.print_scale, max_y * self.print_scale + self.print_scale), ' ', dtype=str)
+        return f"Piece(id={self._shape_id}, t={self.transform})"
+
+    def debug(self) -> str:
+        max_x = max(pos.x for pos in self._body)
+        max_y = max(pos.y for pos in self._body)
+        grid = np.full((max_x * self._print_scale + self._print_scale, max_y * self._print_scale + self._print_scale), ' ', dtype=str)
         
-        for x, y in self.shape:
-            for i in range(self.print_scale):
-                for j in range(self.print_scale):
-                    grid[x * self.print_scale + i][y * self.print_scale + j] = '+'
+        for x, y in self._body:
+            for i in range(self._print_scale):
+                for j in range(self._print_scale):
+                    grid[x * self._print_scale + i][y * self._print_scale + j] = '+'
         
         return '\n'.join(''.join(row) for row in grid.tolist())
 
-    def get_shape(self) -> List[Vector2]:
-        return self.shape
+    @property
+    def shape_id(self) -> str:
+        return self._shape_id
     
-    def get_dimensions(self) -> Vector2:
-        return self.dimensions
+    @property
+    def transform(self) -> int:
+        return self._transform
 
-    def get_expanders(self) -> Dict[Vector2, List[Vector2]]:
-        return self.expanders
+    @property
+    def body(self) -> List[Vector2]:
+        return self._body
     
+    @property
+    def dimensions(self) -> Vector2:
+        return self._dimensions
+
+    @property
+    def expanders(self) -> Dict[Vector2, List[Vector2]]:
+        return self._expanders
+
+    @property
+    def locked(self) -> List[Vector2]:
+        return self._locked
+    
+    @property
+    def idx(self) -> int:
+        return self._idx
+    
+    @property
+    def size(self) -> int:
+        return len(self._body)
+    
+    def _set_transform(self, transform: int) -> None:
+        self._transform = transform
+
 class BlokusPieceTransformations:
     @staticmethod
     def __get_any_piece(shape_id: str) -> BlokusPiece:
-        shape = SAMPLE_SHAPE[shape_id]
+        squares = SAMPLE_SHAPE[shape_id]
         dimensions = (0, 0)
         expanders = {}
         locked = set()
-        for tile in shape:
+        for tile in squares:
             dimensions = (max(dimensions[0], tile[0] + 1), max(dimensions[1], tile[1] + 1))
             for surrounders in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
                 new_tile = (tile[0] + surrounders[0], tile[1] + surrounders[1])
-                if new_tile not in shape:
+                if new_tile not in squares:
                     locked.add(new_tile)
 
-        for tile in shape:
+        for tile in squares:
             for surrounders in [(1, 1), (-1, -1), (-1, 1), (1, -1)]:
                 new_tile = (tile[0] + surrounders[0], tile[1] + surrounders[1])
-                if new_tile not in shape and new_tile not in locked:
+                if new_tile not in squares and new_tile not in locked:
                     expanders[Vector2(*new_tile)] = Vector2(*surrounders)
                     
         dimensions = Vector2(dimensions[0], dimensions[1])
         # expanders = sorted(list(expanders))
         locked = sorted(list(locked))
-        return BlokusPiece(shape_id=shape_id, shape=shape, dimensions=dimensions, expanders=expanders, locked=locked)
+        return BlokusPiece(shape_id=shape_id, body=squares, dimensions=dimensions, expanders=expanders, locked=locked)
     
     @staticmethod
     def __rotate_right_shape(piece: BlokusPiece) -> BlokusPiece:
-        (h, w) = piece.dimensions
+        (h, w) = piece._dimensions
         right = lambda pos: (pos[1], h - pos[0] - 1)
-        new_expanders = {right(i): (dy, -dx) for i, (dx, dy) in piece.expanders.items()}
-        new_piece = BlokusPiece(piece.shape_id, list(map(right, piece.shape)), dimensions=Vector2(w, h), expanders=new_expanders, locked=list(map(right, piece.locked)))
+        new_expanders = {right(i): (dy, -dx) for i, (dx, dy) in piece._expanders.items()}
+        new_piece = BlokusPiece(piece.shape_id, list(map(right, piece._body)), dimensions=Vector2(w, h), expanders=new_expanders, locked=list(map(right, piece._locked)))
         return new_piece
     
     @staticmethod
     def __reflect_diagonal(piece: BlokusPiece) -> BlokusPiece:
-        (h, w) = piece.dimensions
+        (h, w) = piece._dimensions
         diagonal = lambda pos: (pos[1], pos[0])
-        new_expanders = {diagonal(i): (dy, dx) for i, (dx, dy) in piece.expanders.items()}
-        new_piece = BlokusPiece(piece.shape_id, list(map(diagonal, piece.shape)), dimensions=Vector2(w, h), expanders=new_expanders, locked=list(map(diagonal, piece.locked)))
-        return new_piece
-    
-    @staticmethod
-    def __reflect_vertical(piece: BlokusPiece) -> BlokusPiece:
-        (h, w) = piece.dimensions
-        vertical = lambda pos: (pos[0], w - pos[1] - 1)
-        new_expanders = {vertical(i): (dx, -dy) for i, (dx, dy) in piece.expanders.items()}
-        new_piece = BlokusPiece(piece.shape_id, list(map(vertical, piece.shape)), dimensions=Vector2(h, w), expanders=new_expanders, locked=list(map(vertical, piece.locked)))
+        new_expanders = {diagonal(i): (dy, dx) for i, (dx, dy) in piece._expanders.items()}
+        new_piece = BlokusPiece(piece.shape_id, list(map(diagonal, piece._body)), dimensions=Vector2(w, h), expanders=new_expanders, locked=list(map(diagonal, piece._locked)))
         return new_piece
     
     @staticmethod
     def __reflect_horizontal(piece: BlokusPiece) -> BlokusPiece:
-        (h, w) = piece.dimensions
+        (h, w) = piece._dimensions
+        vertical = lambda pos: (pos[0], w - pos[1] - 1)
+        new_expanders = {vertical(i): (dx, -dy) for i, (dx, dy) in piece._expanders.items()}
+        new_piece = BlokusPiece(piece.shape_id, list(map(vertical, piece._body)), dimensions=Vector2(h, w), expanders=new_expanders, locked=list(map(vertical, piece._locked)))
+        return new_piece
+    
+    @staticmethod
+    def __reflect_vertical(piece: BlokusPiece) -> BlokusPiece:
+        (h, w) = piece._dimensions
         horizontal = lambda pos: (h - pos[0] - 1, pos[1])
-        new_expanders = {horizontal(i): (-dx, dy) for i, (dx, dy) in piece.expanders.items()}
-        new_piece = BlokusPiece(piece.shape_id, list(map(horizontal, piece.shape)), dimensions=Vector2(h, w), expanders=new_expanders, locked=list(map(horizontal, piece.locked)))
+        new_expanders = {horizontal(i): (-dx, dy) for i, (dx, dy) in piece._expanders.items()}
+        new_piece = BlokusPiece(piece.shape_id, list(map(horizontal, piece._body)), dimensions=Vector2(h, w), expanders=new_expanders, locked=list(map(horizontal, piece._locked)))
         return new_piece
     
     def __init__(self, id):
         self.id = id
         transformations = [self.__get_any_piece(id)]
-        transformations.append(self.__reflect_horizontal(transformations[0]))
         transformations.append(self.__reflect_vertical(transformations[0]))
-        transformations.append(self.__reflect_vertical(transformations[1]))
+        transformations.append(self.__reflect_horizontal(transformations[0]))
+        transformations.append(self.__reflect_horizontal(transformations[1]))
 
         transformations.append(self.__reflect_diagonal(transformations[0]))
 
-        transformations.append(self.__reflect_horizontal(transformations[4]))
         transformations.append(self.__reflect_vertical(transformations[4]))
-        transformations.append(self.__reflect_vertical(transformations[5]))
+        transformations.append(self.__reflect_horizontal(transformations[4]))
+        transformations.append(self.__reflect_horizontal(transformations[5]))
         ## done this way to ensure ##
         # transformation[x] has a vertical reflection of transformation[y] if (x ^ y) & 1
         # transformation[x] has a horizontal reflection of transformation[y] if (x ^ y) & 2
 
         transformation_shape_list = []
         transformation_index: List[int] = []
-        self.indexes = []
+        self.indexes: List[int] = []
         self.raw_index: List[int] = [] 
         for i in range(8):
-            piece = tuple(sorted(transformations[i].shape)), transformations[i].dimensions
+            piece = tuple(sorted(transformations[i]._body)), transformations[i]._dimensions
             if piece not in transformation_shape_list:
                 self.indexes.append(len(transformation_shape_list))
                 self.raw_index.append(i)
@@ -163,26 +192,27 @@ class BlokusPieceTransformations:
             else:
                 self.indexes.append(transformation_shape_list.index(piece))
         
-        self.transformations = [transformations[i] for i in transformation_index]
+        self.transformations: List[BlokusPiece] = []
+        for i in transformation_index:
+            transformations[i]._set_transform(len(self.transformations))
+            self.transformations.append(transformations[i])
 
     def get_transformation(self, transform: int) -> BlokusPiece:
         return self.transformations[transform]
     
-    def get_horizontal_reflected_transformation(self, transform: int) -> int:
-        raw_index = self.raw_index[transform] ^ 2
+    def flip_x(self, transform: int) -> int:
+        raw_index = self.raw_index[transform] ^ 1
         new_transform = self.indexes[raw_index]
         return new_transform
 
-    # def reflect_vertical(self, index):
-    #     return self.raw_index[index] ^ 1
+    def flip_y(self, transform: int) -> int:
+        raw_index = self.raw_index[transform] ^ 2
+        new_transform = self.indexes[raw_index]
+        return new_transform
     
-    # def reflect_diagonal(self, index):
-    #     return self.raw_index[index] ^ 4
-
 class BlokusPieceManager:
-    PIECE_VARIANTS_COUNT = 91
-    pieces = None  # Class-level variable to store the pieces
-    
+    PIECE_VARIANTS_COUNT: int = 91
+    pieces: dict[str, BlokusPieceTransformations] = None
     # This will ensure that the pieces are initialized once when the class is first used.
     def __new__(cls, *args, **kwargs):
         if cls.pieces is None:
@@ -193,48 +223,48 @@ class BlokusPieceManager:
             cls.piece_infos = []
             for shape_id, piece in cls.pieces.items():
                 for idx, transformation in enumerate(piece.transformations):
-                    transformation.idx = len(cls.piece_infos)
+                    transformation._idx = len(cls.piece_infos)
                     cls.piece_infos.append((shape_id, idx))
 
         return super().__new__(cls)
     
     @staticmethod
-    def get_transformations(shape_id: str) -> List[BlokusPiece]:
-        return BlokusPieceManager.pieces[shape_id].transformations
-
-    @staticmethod
-    def get_info(piece_id: int) -> Tuple[str, int]:
+    def _get_info(piece_id: int) -> Tuple[str, int]:
         return BlokusPieceManager.piece_infos[piece_id]
 
     @staticmethod
-    def get_piece(shape_id: str, transform: int) -> BlokusPiece:
+    def get_transformations(shape_id: str) -> List[BlokusPiece]:
+        return BlokusPieceManager.pieces[shape_id].transformations
+    
+    @staticmethod
+    def get_piece(*, piece_id: int = None, shape_id: str = None, transform: int = None) -> BlokusPiece:
+        if shape_id is not None and transform is not None:
+            pass
+        elif piece_id is not None:
+            shape_id, transform = BlokusPieceManager._get_info(piece_id)
+        else:
+            raise ValueError("Either shape_id and transform or piece_id must be provided.")
         return BlokusPieceManager.pieces[shape_id].get_transformation(transform)
-
-    @staticmethod
-    def get_piece_shape(shape_id: str, transform: int) -> List[Vector2]:
-        return BlokusPieceManager.pieces[shape_id].get_transformation(transform).get_shape()
-
-    def get_piece_size(shape_id: str) -> int:
-        return len(BlokusPieceManager.pieces[shape_id].get_transformation(0).shape)
     
     @staticmethod
-    def get_piece_dimensions(shape_id: str, transform: int) -> Vector2:
-        return BlokusPieceManager.pieces[shape_id].get_transformation(transform).get_dimensions()
-
-    @staticmethod
-    def get_piece_expanders(shape_id: str, transform: int) -> Dict[Tuple[int, int], List[Tuple[int, int]]]:
-        return BlokusPieceManager.pieces[shape_id].get_transformation(transform).get_expanders()
+    def flip_x(shape_id: str, transform: int) -> int:
+        resulting_transform = BlokusPieceManager.pieces[shape_id].flip_x(transform)
+        return resulting_transform
     
     @staticmethod
-    def get_piece_idx(shape_id: str, transform: int) -> int:
-        return BlokusPieceManager.pieces[shape_id].get_transformation(transform).idx
+    def flip_y(shape_id: str, transform: int) -> int:
+        resulting_transform = BlokusPieceManager.pieces[shape_id].flip_y(transform)
+        return resulting_transform
+    # @staticmethod
+    # def flip_x(piece: BlokusPiece) -> BlokusPiece:
+    #     resulting_transform = BlokusPieceManager.pieces[piece.shape_id].flip_x(piece.transform)
+    #     return BlokusPieceManager.get_piece(shape_id=piece.shape_id, transform=resulting_transform)
     
-    @staticmethod
-    def reflect_horizontal(shape_id: str, transform: int) -> BlokusPiece:
-        rt = BlokusPiece.raw_index(shape_id, transform)
-        rotated_transform = BlokusPieceManager.pieces[shape_id].get_horizontal_reflected_transformation()
-        return BlokusPieceManager.get_piece(shape_id, rotated_transform)
-
+    # @staticmethod
+    # def flip_y(piece: BlokusPiece) -> BlokusPiece:
+    #     resulting_transform = BlokusPieceManager.pieces[piece.shape_id].flip_y(piece.transform)
+    #     return BlokusPieceManager.get_piece(shape_id=piece.shape_id, transform=resulting_transform)
+    
     # def reflect_horizontal(self, index):
     #     return self.raw_index[index] ^ 2
 

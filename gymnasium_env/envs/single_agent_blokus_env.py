@@ -1,4 +1,6 @@
 import gymnasium as gym
+from gymnasium.core import ActType
+from typing import SupportsInt
 from gymnasium_env.envs.blokus_env import BlokusEnv
 from src.agents import Agent, RandomAgent, SimpleFunctionAgent, MiniMaxAgent
 
@@ -13,9 +15,10 @@ class SingleAgentBlokusEnv(BlokusEnv):
         self.hidden_agents = [None] + hidden_agents
         super(SingleAgentBlokusEnv, self).__init__(num_players=num_players, *args, **kwargs)
         
-    def step(self, action):
+    def step(self, action_id: ActType):
+        assert isinstance(action_id, SupportsInt), f"action_id must be an integer, got {action_id, type(action_id)}"
         assert self.current_player == self.player_turn
-        obs, total_reward, terminated, truncated, info = super(SingleAgentBlokusEnv, self).step(action)
+        obs, total_reward, terminated, truncated, info = super(SingleAgentBlokusEnv, self).step(action_id)
         if terminated or truncated:
             return obs, total_reward, terminated, truncated, info
         return self._process_hidden_agents(obs, total_reward, terminated, truncated, info)
@@ -28,8 +31,8 @@ class SingleAgentBlokusEnv(BlokusEnv):
     def _process_hidden_agents(self, obs, total_reward, terminated, truncated, info):
         while self.current_player != self.player_turn:
             assert len(obs["possible_actions"]) > 0
-            action = self.hidden_agents[self.current_player].get_action(self, obs)
-            obs, reward, terminated, truncated, info = super(SingleAgentBlokusEnv, self).step(action)
+            action_id = self.hidden_agents[self.current_player].get_action(self, obs)
+            obs, reward, terminated, truncated, info = super(SingleAgentBlokusEnv, self).step(action_id)
             total_reward -= reward
             assert not truncated
             if terminated:

@@ -1,58 +1,75 @@
 from typing import Tuple
 
-from .blokus_piece import BlokusPieceManager, Vector2
+from .blokus_piece import BlokusPieceManager, BlokusPiece, Vector2
 
 class BlokusAction:
     @staticmethod
-    def id_to_tuple(board_size, action_id: int) -> Tuple[int, int, int, int]:
+    def tuple_to_id(board_size, x: int, y: int, shape_id, transform) -> int:
         return (
-            action_id // (BlokusPieceManager.PIECE_VARIANTS_COUNT * board_size),
-            (action_id // BlokusPieceManager.PIECE_VARIANTS_COUNT) % board_size,
-            *BlokusPieceManager.piece_infos[int(action_id % BlokusPieceManager.PIECE_VARIANTS_COUNT)]
+            x * board_size * BlokusPieceManager.PIECE_VARIANTS_COUNT +
+            y * BlokusPieceManager.PIECE_VARIANTS_COUNT +
+            BlokusPieceManager.pieces[shape_id].get_transformation(transform).idx
         )
-
-    @staticmethod
-    def tuple_to_id(board_size, action_tuple: Tuple[int, int, int, int]) -> int:
-        return (
-            action_tuple[0] * board_size * BlokusPieceManager.PIECE_VARIANTS_COUNT +
-            action_tuple[1] * BlokusPieceManager.PIECE_VARIANTS_COUNT +
-            BlokusPieceManager.get_piece_idx(action_tuple[2], action_tuple[3])
-        )
-    def get_board_transformation(self, dx: int, dy: int, expander: Vector2) -> None:
-        shape = BlokusPieceManager.get_piece_dimensions(self.shape_id, self.transform)
-        original_piece_transform = BlokusPieceManager.pieces[self.shape_id].raw_index[self.transform]
-        if dx == -1: ## needs flip in x axis
-            self.x = 1 - self.x - shape.x + expander.x
-            original_piece_transform ^= 1
-        else:
-            self.x = self.x + expander[0]
+    
+    @staticmethod  
+    def transform(board_row, board_col, dx, dy, shape_id, piece_transformation) -> Tuple[int, int, int]:
+        h, w = BlokusPieceManager.pieces[shape_id].transformations[piece_transformation].dimensions
+        piece_transformation = BlokusPieceManager.pieces[shape_id].raw_index[piece_transformation]
+        if dx == -1: 
+            board_row = 1 - board_row - h
+            piece_transformation ^= 1
         if dy == -1:
-            self.y = 1 - self.y - shape.y + expander.y
-            original_piece_transform ^= 2
-        else:
-            self.y = self.y + expander[1]
-        self.transform = BlokusPieceManager.pieces[self.shape_id].indexes[original_piece_transform]
-        self._update_id()
+            board_col = 1 - board_col - w
+            piece_transformation ^= 2
+        piece_transformation = BlokusPieceManager.pieces[shape_id].indexes[piece_transformation]
+        return board_row, board_col, piece_transformation
+    
+    # def _transform(self, dx: int, dy: int, expander: Vector2) -> None: # SLOW FOR NO APPARENT REASON
+    #     dimensions = self.piece.dimensions
+    #     new_transform = self.piece.transform
+    #     if dx == -1: ## needs flip in x axis
+    #         self.x = 1 - self.x - dimensions.x
+    #         new_transform = BlokusPieceManager.flip_x(self.piece.shape_id, new_transform)
+    #         # self.piece = BlokusPieceManager.flip_x(self.piece)
+    #     if dy == -1:
+    #         self.y = 1 - self.y - dimensions.y
+    #         new_transform = BlokusPieceManager.flip_y(self.piece.shape_id, new_transform)
+    #         # self.piece = BlokusPieceManager.flip_y(self.piece)
+    #     self.piece = BlokusPieceManager.get_piece(shape_id=self.piece.shape_id, transform=new_transform)
+    #     self.x += expander.x
+    #     self.y += expander.y
 
-    def __init__(self, board_size: int, action_id: int | None = None, action_tuple: Tuple[int, int, int, int] | None = None):
+    def __init__(self, *, board_size: int, action_id: int | None = None, action_tuple: Tuple[int, int, BlokusPiece] | None = None, transform: Tuple[int, int, Vector2] = None) -> None:
         self.board_size = board_size
+        if isinstance(action_id, BlokusAction):
+            print(action_id)
+            raise ValueError("Action id must be an integer")
+        
         if action_id is not None:
             self.action_id = action_id
             assert action_tuple is None
             self._update_tuple()
         elif action_tuple is not None:
-            self.x, self.y, self.shape_id, self.transform = action_tuple
+            self.x, self.y, self.piece = action_tuple
+            if not isinstance(self.piece, BlokusPiece):
+                raise ValueError("Piece must be a BlokusPiece object")
+                # and 0 <= self.piece < BlokusPieceManager.PIECE_VARIANTS_COUNT:
+                # self.piece = BlokusPieceManager.get_piece(self.piece)
             assert action_id is None
+            if transform:
+                self._transform(*transform)
             self._update_id()
         else:
             raise ValueError("Either action_id or action_tuple must be provided")
+        # self._update_id()
+        
 
     @property    
     def action_tuple(self):
-        return self.x, self.y, self.shape_id, self.transform
+        return self.x, self.y, self.piece
     
     def __str__(self):
-        return f"Action(id = {self.action_id} x = {self.x}, y = {self.y}, p = {self.shape_id}, t = {self.transform})"
+        return f"Action(id = {self.action_id} x = {self.x}, y = {self.y}, p = {self.piece})"
     
     def update_position(self, dx: int = 0, dy: int = 0):
         self.x += dx
@@ -60,7 +77,19 @@ class BlokusAction:
         self._update_id()
 
     def _update_id(self):
-        self.action_id = self.tuple_to_id(self.board_size, (self.x, self.y, self.shape_id, self.transform))
-        
+        self.action_id = (
+            self.x * self.board_size * BlokusPieceManager.PIECE_VARIANTS_COUNT +
+            self.y * BlokusPieceManager.PIECE_VARIANTS_COUNT +
+            self.piece.idx
+        )
+
     def _update_tuple(self):
-        self.x, self.y, self.shape_id, self.transform = self.id_to_tuple(self.board_size, self.action_id)
+        try:
+            self.x = self.action_id // (BlokusPieceManager.PIECE_VARIANTS_COUNT * self.board_size)
+            self.y = (self.action_id // BlokusPieceManager.PIECE_VARIANTS_COUNT) % self.board_size
+            self.piece = BlokusPieceManager.get_piece(
+                piece_id=int(self.action_id % BlokusPieceManager.PIECE_VARIANTS_COUNT)
+            )
+        except Exception as e:
+            print(self.action_id)
+            raise e

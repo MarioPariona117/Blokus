@@ -9,7 +9,7 @@ __pycache__/
 
 ## hidden files
 .DS_Store
-gymnasium_env/.DS_Store
+.gymnasium_env/.DS_Store
 .vscode/
 .tmp.driveupload/
 profile_output

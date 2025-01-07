@@ -1,7 +1,7 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from typing import Tuple, Any, Dict, List
+from typing import Tuple, Any, Dict, List, SupportsInt
 from gymnasium.core import ObsType, ActType
 import pygame
 import time
@@ -212,7 +212,7 @@ class BlokusEnv(gym.Env):
         )
     
     @staticmethod
-    def get_actions_from_neighborhood(neighborhood: int) -> List[Tuple[int, int, ActType]]:
+    def get_actions_from_neighborhood(neighborhood: int, available_pieces) -> List[Tuple[int, int, ActType]]:
         """
         Retrieve the list of possible actions from a neighborhood bitmask.
         Args:
@@ -297,21 +297,19 @@ class BlokusEnv(gym.Env):
                     ret[i, j] = direction
         return ret
     
-    def place_piece(self, action_parameters: Tuple[int, int, str, int], player, place=True, check=True) -> bool:
-        row, col, shape_id, piece_transformation = action_parameters
-        piece = BlokusPieceManager.get_piece(shape_id=shape_id, transform=piece_transformation)
+    def place_piece(self, action: BlokusAction, player: int, place=True, check=True) -> bool:
         can_place = True
         if check:
-            if not piece.shape_id in self.agents_info[player].available_pieces:
+            if not action.piece.shape_id in self.agents_info[player].available_pieces:
                 print("Piece already used")
                 return False #### PIECE ALREADY USED ####
 
             can_place = False
-            for i, j in piece.shape:
-                board_row, board_col = i + row, j + col
+            for i, j in action.piece.body:
+                board_row, board_col = i + action.x, j + action.y
                 if not self.legal_cell((board_row, board_col), player):
                     print("Illegal cell")
-                    print(f"Failed to place piece: {shape_id} at ({row}, {col}) with transformation {piece_transformation} for player {player}")
+                    print(f"Failed to place piece: {action.piece.shape_id} at ({action.x}, {action.y}) with transformation {action.piece.transform} for player {player}")
                     print(self.board)
                     assert False
                     return False
@@ -324,56 +322,54 @@ class BlokusEnv(gym.Env):
         if not place:
             return True
         
-        # self.update_attributes(player, row, col, piece)
-        # self.faster_update_attributes(player, row, col, piece)
         if BlokusEnv.NEIGHBOR_POS is not None:
-            self.faster_update_attributes(player, row, col, piece)
+            self.faster_update_attributes(player, action)
         else:
-            self.update_attributes(player, row, col, piece)
+            self.update_attributes(player, action)
         return True
 
-    def update_attributes(self, player, row: int, col: int, piece: BlokusPiece):
+    def update_attributes(self, player, action: BlokusAction):
         for i in range(1, self.num_players + 1):
             self.agents_info[i].possible_actions = None
 
-        for i, j in piece.shape:
-            self.board[i + row, j + col] = player
+        for i, j in action.piece.body:
+            self.board[i + action.x, j + action.y] = player
             
-        self.agents_info[player].available_pieces.remove(piece.shape_id)
+        self.agents_info[player].available_pieces.remove(action.piece.shape_id)
         self.agents_info[player].started = True
 
         for i in range(1, self.num_players + 1):
             self.agents_info[i].locked_squares = self.get_locked_squares(i)
             self.agents_info[i].expander_squares = self.get_expander_squares(i)
             
-    def faster_update_attributes(self, player, row: int, col: int, piece: BlokusPiece):
+    def faster_update_attributes(self, player, action: BlokusAction):
         ### UPDATE OTHER ATTRIBUTES TO MAKE IT FASTER ###
         ### EXAMPLE: LOCKED/EXPANDER SQUARES ###
         for i in range(1, self.num_players + 1):
             self.agents_info[i].possible_actions = None
 
         assert 1 <= player <= self.num_players
-        self.agents_info[player].available_pieces.remove(piece.shape_id)
+        self.agents_info[player].available_pieces.remove(action.piece.shape_id)
         self.agents_info[player].started = True
 
-        for i, j in piece.locked:
-            self.agents_info[player].locked_squares.add(Vector2(row + i, col + j))
-            if (row + i, col + j) in self.agents_info[player].expander_squares:
-                self.agents_info[player].expander_squares.pop(Vector2(row + i, col + j))
+        for i, j in action.piece.locked:
+            self.agents_info[player].locked_squares.add(Vector2(action.x + i, action.y + j))
+            if (action.x + i, action.y + j) in self.agents_info[player].expander_squares:
+                self.agents_info[player].expander_squares.pop(Vector2(action.x + i, action.y + j))
 
-        for (i, j), (dx, dy) in piece.expanders.items():
-            if self.legal_cell((row + i, col + j), player): # add own expanders
-                self.agents_info[player].expander_squares[Vector2(row + i, col + j)] = Vector2(dx, dy)
+        for (i, j), (dx, dy) in action.piece.expanders.items():
+            if self.legal_cell((action.x + i, action.y + j), player): # add own expanders
+                self.agents_info[player].expander_squares[Vector2(action.x + i, action.y + j)] = Vector2(dx, dy)
         
-        for i, j in piece.shape:
-            self.board[i + row, j + col] = player
-            if (i + row, j + col) in self.agents_info[player].expander_squares:
-                self.agents_info[player].expander_squares.pop(Vector2(i + row, j + col))
+        for i, j in action.piece.body:
+            self.board[i + action.x, j + action.y] = player
+            if (i + action.x, j + action.y) in self.agents_info[player].expander_squares:
+                self.agents_info[player].expander_squares.pop(Vector2(i + action.x, j + action.y))
             for k in range(1, self.num_players + 1):
                 if k == player:
                     continue
-                if (i + row, j + col) in self.agents_info[k].expander_squares:
-                    self.agents_info[k].expander_squares.pop(Vector2(i + row, j + col))
+                if (i + action.x, j + action.y) in self.agents_info[k].expander_squares:
+                    self.agents_info[k].expander_squares.pop(Vector2(i + action.x, j + action.y))
         
         if self.testing_mode:
             raise ValueError("Testing mode")
@@ -397,7 +393,6 @@ class BlokusEnv(gym.Env):
                     assert False
                 # a = self.agents_info[i].expander_squares
                 # self.agents_info[i].locked_squares == self.get_locked_squares(i)
-
 
     def possible_actions(self, player: int) -> np.ndarray:
         """Generate all possible moves for a player by checking each piece and transformation."""
@@ -442,25 +437,24 @@ class BlokusEnv(gym.Env):
         """Generate all possible moves for a player by checking each piece and transformation efficiently."""
         actions = set()
         for shape_id in self.agents_info[player].available_pieces:
-            for piece_transformation in range(len(BlokusPieceManager.get_transformations(shape_id))):
-                piece_shape = BlokusPieceManager.get_piece_dimensions(shape_id, piece_transformation)
-                for x, y in piece_shape:
+            for transformed_piece in BlokusPieceManager.get_transformations(shape_id):
+                for x, y in transformed_piece.body:
                     for i, j in self.agents_info[player].expander_squares:
-                        if self.place_piece((i - x, j - y, shape_id, piece_transformation), player, place=False):
-                            actions.add(self._tuple_to_action((i - x, j - y, shape_id, piece_transformation)))
+                        action = BlokusAction(board_size=self.board_size, action_tuple=(i - x, j - y, transformed_piece))
+                        if self.place_piece(action, player, place=False):
+                            actions.add(action.action_id)
         return np.array(list(actions))
 
     def possible_actions_inefficient(self, player: int) -> np.ndarray:
         """Generate all possible moves for a player by checking each piece and transformation inefficiently."""
         actions = []
         for shape_id in self.agents_info[player].available_pieces:
-            for piece_transformation in range(len(BlokusPieceManager.get_transformations(shape_id))):
-                piece_shape = BlokusPieceManager.get_piece_dimensions(shape_id, piece_transformation)
-                
-                for i in range(self.board_size - piece_shape.x + 1):
-                    for j in range(self.board_size - piece_shape.y + 1):
-                        if self.place_piece((i, j, shape_id, piece_transformation), player, place=False):
-                            actions.append(self._tuple_to_action((i, j, shape_id, piece_transformation)))
+            for transformed_piece in BlokusPieceManager.get_transformations(shape_id):
+                for i in range(self.board_size - transformed_piece.dimensions.x + 1):
+                    for j in range(self.board_size - transformed_piece.dimensions.y + 1):
+                        action = BlokusAction(board_size=self.board_size, action_tuple=(i, j, transformed_piece))
+                        if self.place_piece(action=action, player=player, place=False):
+                            actions.append(action.action_id)
         return np.array(list(actions))
 
     def possible_actions_precomputed(self, player: int) -> np.ndarray:
@@ -470,54 +464,56 @@ class BlokusEnv(gym.Env):
             actions.update(self.possible_actions_precomputed_expander_square(expander, player))
         return np.array(list(actions), dtype=np.int16)
     
-    def possible_actions_precomputed_expander_square(self, expander: Vector2, player: int) -> ActType:
+    def possible_actions_precomputed_expander_square(self, expander: Vector2, player: int) -> ActType: # This is the most important (this should be fast)
         """Generate all possible moves for a player by checking each piece and transformation using precomputed data for a single expander square."""
         neighborhood = self.get_neighborhood(expander, player)
         if neighborhood == 0:
             self.freq[1] += 1
             if "1" in self.agents_info[player].available_pieces:
-                return [BlokusAction(board_size=self.board_size, action_tuple=(expander.x, expander.y, "1", 0)).action_id]
+                return [BlokusAction.tuple_to_id(self.board_size, expander[0], expander[1], "1", 0)]
             else:
                 return []
             
         dx, dy = self.agents_info[player].expander_squares[expander]
-        actions = BlokusEnv.get_actions_from_neighborhood(neighborhood)
-        # print("neighborhood:", neighborhood, "actions:", len(actions))
+
+        actions = BlokusEnv.get_actions_from_neighborhood(neighborhood, self.agents_info[player].available_pieces)
+        
         if (-2, 0, 16) in actions:
-            if self.legal_cell((expander.x - dx * 2, expander.y), player):
-                actions.add((-2, 0, 68))
-            if self.legal_cell((expander.x - dx * 3, expander.y + dy), player):
-                actions.add((-3, 0, 40))
+            if self.legal_cell((expander[0] - dx * 2, expander[1]), player):
+                actions.add((-2, 0, 68)) # "U"
+            if self.legal_cell((expander[0] - dx * 3, expander[1] + dy), player):
+                actions.add((-3, 0, 40)) # "L5"
 
         if (0, -2, 13) in actions:
-            if self.legal_cell((expander.x, expander.y - dy * 2), player):
-                actions.add((0, -2, 66)) 
-            if self.legal_cell((expander.x + dx, expander.y - dy * 3), player):
-                actions.add((0, -3, 43))
+            if self.legal_cell((expander[0], expander[1] - dy * 2), player):
+                actions.add((0, -2, 66)) # "U"
+            if self.legal_cell((expander[0] + dx, expander[1] - dy * 3), player):
+                actions.add((0, -3, 43)) # "L5"
 
-        if self.legal_cell((expander.x + dx * 4, expander.y), player) and (0, 0, 10) in actions:
-            actions.add((0, 0, 37))
-        if self.legal_cell((expander.x, expander.y + dy * 4), player) and (0, 0, 9) in actions:
-            actions.add((0, 0, 36))
+        if (0, 0, 10) in actions and self.legal_cell((expander.x + dx * 4, expander.y), player):
+            actions.add((0, 0, 37)) # "I5"
+        if (0, 0, 9) in actions and self.legal_cell((expander.x, expander.y + dy * 4), player):
+            actions.add((0, 0, 36)) # "I5"
         self.freq[len(actions)] += 1
 
         board_actions = []
-        for row, col, piece_id in actions:
-            shape_id, piece_transformation = BlokusPieceManager.get_info(piece_id)
-            action = BlokusAction(board_size=self.board_size, action_tuple=(row, col, shape_id, piece_transformation))
-            h, w = BlokusPieceManager.get_piece_dimensions(shape_id, piece_transformation)
-            action.get_board_transformation(dx, dy, expander)
-            if shape_id in self.agents_info[player].available_pieces:
-                board_actions.append(action.action_id)
+        for board_row, board_col, piece_id in actions:
+            shape_id, piece_transformation = BlokusPieceManager.piece_infos[piece_id]
+            if not shape_id in self.agents_info[player].available_pieces:
+                continue
+            board_row, board_col, piece_transformation = BlokusAction.transform(board_row, board_col, dx, dy, shape_id, piece_transformation)
+            board_row += expander.x
+            board_col += expander.y
+            board_actions.append(BlokusAction.tuple_to_id(self.board_size, int(board_row), int(board_col), shape_id, int(piece_transformation)))
         return board_actions
-    
-    def step(self, action: ActType) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
-        """Execute a step by making the player’s move and updating the current player."""
-        row, col, shape_id, piece_transformation = BlokusAction(board_size=self.board_size, action_id=action).action_tuple
 
-        if(not self.place_piece(action_parameters=(row, col, shape_id, piece_transformation), player=self.current_player, check=True)):
+    def step(self, action_id: ActType) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
+        """Execute a step by making the player’s move and updating the current player."""
+        assert isinstance(action_id, SupportsInt), f"Action id must be an integer, not {action_id, type(action_id)}"
+        action = BlokusAction(board_size=self.board_size, action_id=action_id)
+        if(not self.place_piece(action=action, player=self.current_player, check=True)):
             print("Invalid move")
-            print("Piece:", shape_id, "Transformation:", piece_transformation, "Row:", row, "Col:", col)
+            print("Piece:", action.piece.shape_id, "Transformation:", action.piece.transform, "Row:", action.x, "Col:", action.y)
             print("Current player:", self.current_player)
             print("Agents info:", self.agents_info)
             print("Board state:\n", self.board)
@@ -527,7 +523,7 @@ class BlokusEnv(gym.Env):
             return observation, self.BAD_MOVE_PUNISHMENT, True, True, info
         
         self.steps +=1
-        reward = len(BlokusPieceManager.get_piece_shape(shape_id, piece_transformation))
+        reward = action.piece.size
         self.agents_info[self.current_player].points += reward
         self.current_player = (self.current_player % self.num_players) + 1
         passed = 0
@@ -545,7 +541,6 @@ class BlokusEnv(gym.Env):
         
         if self.render_mode == "human":
             self._render_frame()
-
 
         return observation, reward, terminated, False, info
 

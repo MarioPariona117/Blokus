@@ -1,5 +1,6 @@
-from typing import Callable, Tuple
+from typing import Callable, Tuple, List
 import gymnasium as gym
+from typing import SupportsFloat, SupportsInt
 import numpy as np
 import random
 import threading
@@ -22,7 +23,7 @@ class ABPruningAgent(MiniMaxAgent):
         depth: int = -1, 
         cache_dir: str = "/Users/mario/Documents/proj/cam/Blokus/src/agents/cache/alpha_beta", 
         use_cache: bool = True, 
-        sorted_order: Callable[[BlokusEnv, ObsType, ActType, int], float | Tuple[float, float]] = lambda x: my_heu(*x),
+        sorted_order: Callable[[BlokusEnv, ObsType, BlokusAction], float | Tuple[float, float]] = lambda x: my_heu(*x),
         testing_mode: Tuple[bool, int | None] = (False, None)
     ):
         """
@@ -59,7 +60,7 @@ class ABPruningAgent(MiniMaxAgent):
         self.if_print = 1
 
     # @time_function
-    def get_action(self, env, obs):
+    def get_action(self, env: BlokusEnv, obs: ObsType) -> ActType:
         encoded_board = encode_board_string(obs["state"])
         if self.use_cache:
             best_action = self.cache_manager.retrieve_action(encoded_board)
@@ -74,7 +75,7 @@ class ABPruningAgent(MiniMaxAgent):
         # print(best_value, self.env._action_to_tuple(best_action))
         return best_action
 
-    def minimax(self, obs, depth, alpha=-np.inf, beta=np.inf, theta=0):
+    def minimax(self, obs: ObsType, depth: int, alpha: float = -np.inf, beta: float = np.inf, theta: float = 0):
         self.visited_states += 1
         if depth <= 0:
             return None, 0
@@ -95,21 +96,22 @@ class ABPruningAgent(MiniMaxAgent):
 
         state = self.env.capture_state()
         action_ids = obs["possible_actions"]
+        for i in action_ids:
+            assert isinstance(i, SupportsInt), f"Action id must be an integer, got {i, type(i)} instead"
         actions = [BlokusAction(board_size=self.board_size, action_id=action_id) for action_id in action_ids]
-        # for action in actions:
-        #     print(self.env._action_to_tuple(action))
-        # exit(0)
-        sorted_actions = sorted(actions, key=lambda action: self.sorted_order((self.env, obs, action, obs["steps"])))
+        sorted_actions: List[BlokusAction] = sorted(actions, key=lambda action: self.sorted_order((self.env, obs, action)))
         if self.testing_mode:
             if depth >= self.depth - self.depth_diff_test:
                 sorted_actions = tqdm(sorted_actions)
+
         for action in sorted_actions:
             if self.testing_mode:
                 if depth >= self.depth - self.depth_diff_test:
                     sorted_actions.set_description(f"BValue: {best_value}, BAction: {best_action}, CAction: {action})")
                     # mine(self.env, obs, action, print_=True)
                     sorted_actions.refresh()
-            psz = BlokusPieceManager.get_piece_size(action.shape_id)
+                    
+            psz = action.piece.size
             new_obs, new_reward, term, trunc, _ = self.env.step(action.action_id)
             assert psz == new_reward
             assert not trunc

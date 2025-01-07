@@ -19,13 +19,13 @@ for l in range(40):
         cnt += 1
     levels[l] = d
 
-def level_7(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> int:
-    return levels[7][action.shape_id]
+def level_7(obs: ObsType, action: BlokusAction) -> int:
+    return levels[7][action.piece.shape_id]
 
-def level_5(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> int:
-    return levels[5][action.shape_id]
+def level_5(action: BlokusAction) -> int:
+    return levels[5][action.piece.shape_id]
 
-def piece_size(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> int:
+def piece_size(obs: ObsType, action: BlokusAction) -> int:
     psz = BlokusPieceManager.get_piece_shape(action.shape_id)
     return -psz
 
