@@ -16,6 +16,7 @@ profile_output
 
 ## models
 *.pkl
+*.pth
 
 ## videos
 blokus_games/

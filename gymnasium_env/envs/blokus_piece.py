@@ -210,6 +210,11 @@ class BlokusPieceTransformations:
         new_transform = self.indexes[raw_index]
         return new_transform
     
+    def rot180(self, transform: int) -> int:
+        raw_index = self.raw_index[transform] ^ 3
+        new_transform = self.indexes[raw_index]
+        return new_transform
+    
 class BlokusPieceManager:
     PIECE_VARIANTS_COUNT: int = 91
     pieces: dict[str, BlokusPieceTransformations] = None
@@ -255,6 +260,12 @@ class BlokusPieceManager:
     def flip_y(shape_id: str, transform: int) -> int:
         resulting_transform = BlokusPieceManager.pieces[shape_id].flip_y(transform)
         return resulting_transform
+    
+    @staticmethod
+    def rot180(shape_id: str, transform: int) -> int:
+        resulting_transform = BlokusPieceManager.pieces[shape_id].rot180(transform)
+        return resulting_transform
+    
     # @staticmethod
     # def flip_x(piece: BlokusPiece) -> BlokusPiece:
     #     resulting_transform = BlokusPieceManager.pieces[piece.shape_id].flip_x(piece.transform)

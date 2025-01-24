@@ -9,7 +9,7 @@ import time
 from gymnasium.core import ObsType, ActType
 from tqdm import tqdm
 from ..minimax_agent import MiniMaxAgent
-from src.utils import encode_board_string, decode_board_string, time_function
+from src.utils import encode_board_bytes, decode_board_bytes, time_function
 from gymnasium_env.envs.blokus_env import BlokusEnv, BlokusAction, BlokusPieceManager
 from .heuristics import my_heu
 from .cache_manager import CacheManager
@@ -41,10 +41,10 @@ class ABPruningAgent(MiniMaxAgent):
         assert depth >= -1, "Depth must be greater than or equal to -1"
         self.depth = depth if depth >= 0 else ABPruningAgent.MAX_DEPTH
         self.board_size = board_size
-        self.env = gym.make('gymnasium_env/Blokus-v0', board_size=board_size, num_players=2, disable_env_checker=True, testing_mode=False)
+        self.env: BlokusEnv = gym.make('gymnasium_env/Blokus-v0', board_size=board_size, num_players=2, disable_env_checker=True, testing_mode=False)
         self.env = self.env.unwrapped
         self.env.order_enforce = False
-        cache_path = f"{cache_dir}/alpha_beta_depth{depth}_bz{board_size}.pkl"
+        cache_path = f"{cache_dir}/alpha_beta_depth{depth}_bz{board_size}_bytes.pkl"
         self.use_cache = use_cache
         if self.use_cache:
             self.cache_manager = CacheManager(cache_path=cache_path, time_update=120, time_threshold=480, size_threshold=1e8)
@@ -55,13 +55,13 @@ class ABPruningAgent(MiniMaxAgent):
         self.log = []
         self.testing_mode = testing_mode[0]
         self.depth_diff_test = testing_mode[1]
-        print(self.depth_diff_test)
+        # print(self.depth_diff_test)
         self.counter = 0
         self.if_print = 1
 
     # @time_function
     def get_action(self, env: BlokusEnv, obs: ObsType) -> ActType:
-        encoded_board = encode_board_string(obs["state"])
+        encoded_board = encode_board_bytes(obs["state"])
         if self.use_cache:
             best_action = self.cache_manager.retrieve_action(encoded_board)
             if best_action is not None:
@@ -71,7 +71,7 @@ class ABPruningAgent(MiniMaxAgent):
         opponent_points = obs["points"][3 - player]
         state = env.capture_state()
         self.env.restore_state(state)
-        best_action, best_value = self.minimax(obs, self.depth, alpha=-np.inf, beta=opponent_points - my_points + 1, theta=opponent_points - my_points)
+        best_action, best_value = self.minimax(obs, self.depth, alpha=-np.inf, beta=opponent_points - my_points + 1, theta=opponent_points - my_points + 1)
         # print(best_value, self.env._action_to_tuple(best_action))
         return best_action
 
@@ -80,15 +80,15 @@ class ABPruningAgent(MiniMaxAgent):
         if depth <= 0:
             return None, 0
 
-        encoded_board = encode_board_string(obs["state"])
+        encoded_board = encode_board_bytes(obs["state"])
         if self.use_cache:
-            if self.counter == self.if_print:
-                print(self.counter)
-                self.if_print *= 2
-            self.counter += 1
             best_action = self.cache_manager.retrieve_action(encoded_board)
             best_value = self.cache_manager.retrieve_value(encoded_board)
             if best_action is not None:
+                # self.counter += 1
+                # if self.counter == self.if_print:
+                #     print(self.counter)
+                #     self.if_print *= 2
                 return best_action, best_value
 
         best_value, best_action = -np.inf, -1
@@ -141,9 +141,9 @@ class ABPruningAgent(MiniMaxAgent):
             self.env.restore_state(state)
             if stopped:
                 break
-        if best_value > theta or not stopped:
+        if best_value >= theta or not stopped:
             if self.use_cache:
-                self.cache_manager.update_cache(encode_board_string(obs["state"]), best_action.action_id, best_value)
+                self.cache_manager.update_cache(encode_board_bytes(obs["state"]), best_action.action_id, best_value)
         return best_action.action_id, best_value
     
     def save_cache(self):

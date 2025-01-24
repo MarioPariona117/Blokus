@@ -522,7 +522,7 @@ class BlokusEnv(gym.Env):
             info = self._get_info()
             return observation, self.BAD_MOVE_PUNISHMENT, True, True, info
         
-        self.steps +=1
+        self.steps += 1
         reward = action.piece.size
         self.agents_info[self.current_player].points += reward
         self.current_player = (self.current_player % self.num_players) + 1

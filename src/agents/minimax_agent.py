@@ -1,5 +1,6 @@
 import gymnasium as gym
 import gymnasium_env
+from gymnasium_env.envs import BlokusAction
 import random
 import pickle
 import numpy as np
@@ -53,21 +54,19 @@ class MiniMaxAgent(Agent):
     def minimax(self, obs, depth):
         if depth <= 0:
             return None, 0
-        actions = obs["possible_actions"]
+        actions = [BlokusAction(board_size=self.board_size, action_id=action_id) for action_id in obs["possible_actions"]]
         value = np.zeros(len(actions))
         best_value = -np.inf
         if depth == 1:
             for idx, action in enumerate(actions):
-                _, _, pid, pt = self.env._action_to_tuple(action)
-                psz = len(self.env.pieces[pid].transformations[pt].shape)
+                psz = action.piece.size
                 value[idx] = psz
                 if psz > best_value:
                     best_value = psz
         else:
             state = self.env.capture_state()
             for idx, action in enumerate(actions):
-                _, _, pid, pt = self.env._action_to_tuple(action)
-                psz = len(self.env.pieces[pid].transformations[pt].shape)
+                psz = action.piece.size
                 new_obs, new_reward, term, trunc, _ = self.env.step(action)
                 assert new_reward == psz
                 assert not trunc

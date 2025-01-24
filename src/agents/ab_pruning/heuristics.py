@@ -19,14 +19,14 @@ for l in range(40):
         cnt += 1
     levels[l] = d
 
-def level_7(obs: ObsType, action: BlokusAction) -> int:
+def level_7(env, obs: ObsType, action: BlokusAction) -> int:
     return levels[7][action.piece.shape_id]
 
-def level_5(action: BlokusAction) -> int:
+def level_5(env, action: BlokusAction) -> int:
     return levels[5][action.piece.shape_id]
 
-def piece_size(obs: ObsType, action: BlokusAction) -> int:
-    psz = BlokusPieceManager.get_piece_shape(action.shape_id)
+def piece_size(env: BlokusEnv, obs: ObsType, action: BlokusAction) -> int:
+    psz = action.piece.size
     return -psz
 
 def maximise_our_expanders_difference(env: BlokusEnv, obs: ObsType, action: BlokusAction, wa: float = 1, wb: float = 3, print_: bool = False) -> float:
@@ -65,7 +65,7 @@ def my_heu(env: BlokusEnv, obs: ObsType, action: BlokusAction, print_: bool = Fa
     
     with env_action_context(env, action) as new_obs:
         return (
-            mine_(obs, new_obs, action) * mine2_(env, obs, new_obs, action),
+            mine_(obs, new_obs, action) * mine2_(obs, new_obs, action),
             # level(env, obs, action)
         )
     
@@ -74,7 +74,7 @@ def mine_(obs: ObsType, new_obs: ObsType, action: BlokusAction) -> float:
     a = len(new_obs["expander_squares"][player])  # our expanders
     b = len(new_obs["expander_squares"][3 - player])  # opponent expanders
     value = div(a, b) - div(b, a) - (b - a) * 0.22
-    print(a, b, -value)
+    # print(a, b, -value)
     return -value
 
 def mine2_(obs: ObsType, new_obs: ObsType, action: BlokusAction) -> float:
