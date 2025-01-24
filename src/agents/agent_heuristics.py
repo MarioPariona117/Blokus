@@ -1,11 +1,12 @@
 import numpy as np
 import random
+from gymnasium_env.envs import BlokusAction, BlokusEnv, BlokusPieceManager
 
-def greedy(env1, obs):
+def greedy(env, obs):
     """Selects action placing the largest piece."""
-    def f(x):
-        h, w, pid, pt = env1._action_to_tuple(x)
-        return len(env1.pieces[pid].transformations[pt].shape)
+    def f(action: BlokusAction):
+        return -action.piece.size
+    
     f_values = np.vectorize(f)(obs["possible_actions"])
     max_value = np.max(f_values)
     idx = random.choice(np.where(f_values == max_value)[0])

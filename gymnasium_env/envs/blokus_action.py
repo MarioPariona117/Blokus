@@ -50,7 +50,7 @@ class BlokusAction:
             assert action_tuple is None
             self._update_tuple()
         elif action_tuple is not None:
-            self.x, self.y, self.piece = action_tuple
+            self._x, self._y, self.piece = action_tuple
             if not isinstance(self.piece, BlokusPiece):
                 raise ValueError("Piece must be a BlokusPiece object")
                 # and 0 <= self.piece < BlokusPieceManager.PIECE_VARIANTS_COUNT:
@@ -62,31 +62,51 @@ class BlokusAction:
         else:
             raise ValueError("Either action_id or action_tuple must be provided")
         # self._update_id()
-        
+    
+    @property
+    def x(self):
+        return int(self._x)
+    
+    @property
+    def y(self):
+        return int(self._y)
 
+    def create_rot180(self):
+        return BlokusAction(
+            board_size=self.board_size, 
+            action_tuple=(
+                self.board_size - self._x - 1,
+                self.board_size - self._y - 1, 
+                BlokusPieceManager.get_piece(
+                    shape_id=self.piece.shape_id,
+                    transform=BlokusPieceManager.rot180(self.piece.shape_id, self.piece.transform)
+                )
+            )
+        )
+    
     @property    
     def action_tuple(self):
-        return self.x, self.y, self.piece
+        return self._x, self._y, self.piece
     
     def __str__(self):
-        return f"Action(id = {self.action_id} x = {self.x}, y = {self.y}, p = {self.piece})"
+        return f"Action(id = {self.action_id} x = {self._x}, y = {self._y}, p = {self.piece})"
     
     def update_position(self, dx: int = 0, dy: int = 0):
-        self.x += dx
-        self.y += dy
+        self._x += dx
+        self._y += dy
         self._update_id()
 
     def _update_id(self):
         self.action_id = (
-            self.x * self.board_size * BlokusPieceManager.PIECE_VARIANTS_COUNT +
-            self.y * BlokusPieceManager.PIECE_VARIANTS_COUNT +
+            self._x * self.board_size * BlokusPieceManager.PIECE_VARIANTS_COUNT +
+            self._y * BlokusPieceManager.PIECE_VARIANTS_COUNT +
             self.piece.idx
         )
 
     def _update_tuple(self):
         try:
-            self.x = self.action_id // (BlokusPieceManager.PIECE_VARIANTS_COUNT * self.board_size)
-            self.y = (self.action_id // BlokusPieceManager.PIECE_VARIANTS_COUNT) % self.board_size
+            self._x = self.action_id // (BlokusPieceManager.PIECE_VARIANTS_COUNT * self.board_size)
+            self._y = (self.action_id // BlokusPieceManager.PIECE_VARIANTS_COUNT) % self.board_size
             self.piece = BlokusPieceManager.get_piece(
                 piece_id=int(self.action_id % BlokusPieceManager.PIECE_VARIANTS_COUNT)
             )

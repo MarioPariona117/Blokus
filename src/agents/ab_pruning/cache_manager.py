@@ -14,8 +14,8 @@ class CacheManager:
     def update_cache(self, encoded_state, best_action, best_value):
         if not encoded_state in self.cache:
             self.cache[encoded_state] = {
-                "action": best_action,
-                "value": best_value
+                "a": best_action,
+                "v": best_value
             }
             self.num_updates += 1
         self.check_save_conditions()
@@ -53,9 +53,15 @@ class CacheManager:
     def retrieve_action(self, encoded_state):
         if encoded_state not in self.cache:
             return None
-        return self.cache[encoded_state]["action"]
+        if encoded_state not in self.cache:
+            return None
+        if "a" in self.cache[encoded_state]:
+            return self.cache[encoded_state]["a"]
+        raise ValueError("Action not found in cache")
     
     def retrieve_value(self, encoded_state):
         if encoded_state not in self.cache:
             return None
-        return self.cache[encoded_state]["value"]
+        if "v" in self.cache[encoded_state]:
+            return self.cache[encoded_state]["v"]
+        raise ValueError("Value not found in cache")
