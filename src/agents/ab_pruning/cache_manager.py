@@ -1,5 +1,6 @@
 import time
 import pickle
+import os
 
 class CacheManager:
     def __init__(self, cache_path, time_update=60, time_threshold=120, size_threshold=1e6):
@@ -11,11 +12,12 @@ class CacheManager:
         self.cache_path = cache_path
         self.load_cache()
 
-    def update_cache(self, encoded_state, best_action, best_value):
+    def update_cache(self, encoded_state, best_action, best_value, depth):
         if not encoded_state in self.cache:
             self.cache[encoded_state] = {
                 "a": best_action,
-                "v": best_value
+                "v": best_value,
+                "d": depth
             }
             self.num_updates += 1
         self.check_save_conditions()
@@ -33,8 +35,10 @@ class CacheManager:
 
     def save_cache(self):
         start_save = time.time()
-        with open(self.cache_path, 'wb') as f:
+        temp_cache_path = self.cache_path + '.tmp'
+        with open(temp_cache_path, 'wb') as f:
             pickle.dump(self.cache, f)
+        os.rename(temp_cache_path, self.cache_path)
         time_taken = time.time() - start_save
         print(f"Cache saved with {len(self.cache)} items in {time_taken} seconds at {self.cache_path}")
         self.num_updates = 0

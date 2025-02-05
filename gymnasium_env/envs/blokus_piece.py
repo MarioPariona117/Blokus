@@ -244,8 +244,9 @@ class BlokusPieceManager:
     @staticmethod
     def get_piece(*, piece_id: int = None, shape_id: str = None, transform: int = None) -> BlokusPiece:
         if shape_id is not None and transform is not None:
-            pass
+            assert piece_id is None
         elif piece_id is not None:
+            assert shape_id is None and transform is None
             shape_id, transform = BlokusPieceManager._get_info(piece_id)
         else:
             raise ValueError("Either shape_id and transform or piece_id must be provided.")

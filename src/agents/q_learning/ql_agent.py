@@ -119,9 +119,9 @@ class QL_Agent(Agent):
         return self.get_q_value(state, self.argmax(state))
 
     def test_mode(self):
+        self.epsilon_backup = self.epsilon
         self.epsilon = 0
         self.training = False
-        self.epsilon_backup = self.epsilon
 
     def train_mode(self):
         self.training = True

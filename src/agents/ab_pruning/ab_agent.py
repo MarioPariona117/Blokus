@@ -72,7 +72,6 @@ class ABPruningAgent(MiniMaxAgent):
         state = env.capture_state()
         self.env.restore_state(state)
         best_action, best_value = self.minimax(obs, self.depth, alpha=-np.inf, beta=opponent_points - my_points + 1, theta=opponent_points - my_points + 1)
-        # print(best_value, self.env._action_to_tuple(best_action))
         return best_action
 
     def minimax(self, obs: ObsType, depth: int, alpha: float = -np.inf, beta: float = np.inf, theta: float = 0):
@@ -143,7 +142,7 @@ class ABPruningAgent(MiniMaxAgent):
                 break
         if best_value >= theta or not stopped:
             if self.use_cache:
-                self.cache_manager.update_cache(encode_board_bytes(obs["state"]), best_action.action_id, best_value)
+                self.cache_manager.update_cache(encode_board_bytes(obs["state"]), best_action.action_id, best_value, obs["steps"])
         return best_action.action_id, best_value
     
     def save_cache(self):

@@ -9,30 +9,41 @@ from .agent import Agent
 from src.utils import encode_board_string, decode_board_string
 
 class MiniMaxAgent(Agent):
-    def __init__(self, board_size, name="Agent", depth=100, cache_dir = "/Users/mario/Documents/proj/cam/Blokus/src/agents/cache/minimax"):
+    def __init__(self, board_size, name="Agent", depth=100, use_cache=True, cache_dir = "/Users/mario/Documents/proj/cam/Blokus/src/agents/cache/minimax"):
         self.name = name
         self.depth = depth
         self.board_size = board_size
-        self.env = gym.make('gymnasium_env/Blokus-v0', board_size=board_size, num_players=2, render_mode='console', render_scale=10, disable_env_checker=True, neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors", mode = "good")
+        self.env = gym.make(
+            'gymnasium_env/Blokus-v0', 
+            board_size=board_size, 
+            num_players=2, 
+            render_mode='console', 
+            render_scale=10, 
+            disable_env_checker=True, 
+            neighborhood_dir="/Users/mario/Documents/proj/cam/Blokus/gymnasium_env/envs/auxiliary/pre_neighbors"
+        )
         self.env = self.env.unwrapped
         self.env.order_enforce = False
-        self.cache_path = f"{cache_dir}/minimax_depth{self.depth}_bz{board_size}.pkl"
-        self.load_cache()
+        self.use_cache = use_cache
+        if self.use_cache:
+            self.cache_path = f"{cache_dir}/minimax_depth{self.depth}_bz{board_size}.pkl"
+            self.load_cache()
 
     def get_action(self, env, obs):
         encoded_board = encode_board_string(obs["state"])
-        if encoded_board in self.cache:
-            return random.choice(self.cache[encoded_board]["actions"])
+        if self.use_cache and encoded_board in self.cache:
+            return random.choice(self.cache[encoded_board]["actions"]).action_id
         state = env.capture_state()
         self.env.restore_state(state)
         good_actions, best_value = self.minimax(obs, self.depth)
-        self.cache[encoded_board] = {
-            "actions": good_actions,
-            "value": best_value
-        }
-        print(best_value)
-        print(encoded_board)
-        return random.choice(good_actions)
+        if self.use_cache:
+            self.cache[encoded_board] = {
+                "actions": good_actions,
+                "value": best_value
+            }
+        # print(best_value)
+        # print(encoded_board)
+        return random.choice(good_actions).action_id
     
     def save_cache(self):
         if not self.use_cache:
@@ -54,7 +65,7 @@ class MiniMaxAgent(Agent):
     def minimax(self, obs, depth):
         if depth <= 0:
             return None, 0
-        actions = [BlokusAction(board_size=self.board_size, action_id=action_id) for action_id in obs["possible_actions"]]
+        actions = np.array([BlokusAction(board_size=self.board_size, action_id=action_id) for action_id in obs["possible_actions"]])
         value = np.zeros(len(actions))
         best_value = -np.inf
         if depth == 1:
@@ -67,7 +78,7 @@ class MiniMaxAgent(Agent):
             state = self.env.capture_state()
             for idx, action in enumerate(actions):
                 psz = action.piece.size
-                new_obs, new_reward, term, trunc, _ = self.env.step(action)
+                new_obs, new_reward, term, trunc, _ = self.env.step(action.action_id)
                 assert new_reward == psz
                 assert not trunc
                 if term:

@@ -75,8 +75,8 @@ class BlokusAction:
         return BlokusAction(
             board_size=self.board_size, 
             action_tuple=(
-                self.board_size - self._x - 1,
-                self.board_size - self._y - 1, 
+                self.board_size - self._x - self.piece.dimensions.x,
+                self.board_size - self._y - self.piece.dimensions.y,
                 BlokusPieceManager.get_piece(
                     shape_id=self.piece.shape_id,
                     transform=BlokusPieceManager.rot180(self.piece.shape_id, self.piece.transform)

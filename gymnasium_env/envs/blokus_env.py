@@ -308,10 +308,6 @@ class BlokusEnv(gym.Env):
             for i, j in action.piece.body:
                 board_row, board_col = i + action.x, j + action.y
                 if not self.legal_cell((board_row, board_col), player):
-                    print("Illegal cell")
-                    print(f"Failed to place piece: {action.piece.shape_id} at ({action.x}, {action.y}) with transformation {action.piece.transform} for player {player}")
-                    print(self.board)
-                    assert False
                     return False
                 if (board_row, board_col) in self.agents_info[player].expander_squares:
                     can_place = True #### TOUCHES A CORNER PIECE ####
@@ -443,7 +439,7 @@ class BlokusEnv(gym.Env):
                         action = BlokusAction(board_size=self.board_size, action_tuple=(i - x, j - y, transformed_piece))
                         if self.place_piece(action, player, place=False):
                             actions.add(action.action_id)
-        return np.array(list(actions))
+        return np.array(list(actions), dtype=np.uint16)
 
     def possible_actions_inefficient(self, player: int) -> np.ndarray:
         """Generate all possible moves for a player by checking each piece and transformation inefficiently."""
@@ -455,7 +451,7 @@ class BlokusEnv(gym.Env):
                         action = BlokusAction(board_size=self.board_size, action_tuple=(i, j, transformed_piece))
                         if self.place_piece(action=action, player=player, place=False):
                             actions.append(action.action_id)
-        return np.array(list(actions))
+        return np.array(list(actions), dtype=np.uint16)
 
     def possible_actions_precomputed(self, player: int) -> np.ndarray:
         """Generate all possible moves for a player by checking each piece and transformation using precomputed data."""

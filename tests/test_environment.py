@@ -1,5 +1,5 @@
 import unittest
-from src.environment.blokus_env import BlokusEnv
+from gymnasium_env.envs.blokus_env import BlokusEnv, BlokusAction, Vector2, BlokusPieceManager
 import random
 
 class TestBlokusEnvironment(unittest.TestCase):
