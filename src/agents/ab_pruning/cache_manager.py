@@ -1,6 +1,9 @@
 import time
 import pickle
 import os
+from memory_profiler import profile
+
+import os
 
 class CacheManager:
     def __init__(self, cache_path, time_update=60, time_threshold=120, size_threshold=1e6):
@@ -13,10 +16,12 @@ class CacheManager:
         self.load_cache()
 
     def update_cache(self, encoded_state, best_action, best_value, depth):
+        if depth > 6:
+            return
         if not encoded_state in self.cache:
             self.cache[encoded_state] = {
                 "a": best_action,
-                "v": best_value,
+                "v": best_value, 
                 "d": depth
             }
             self.num_updates += 1
@@ -32,7 +37,7 @@ class CacheManager:
 
     # def get_cache_size(self):
     #     return len(str(self.cache).encode('utf-8'))
-
+    # @profile
     def save_cache(self):
         start_save = time.time()
         temp_cache_path = self.cache_path + '.tmp'
@@ -55,8 +60,6 @@ class CacheManager:
             self.cache = {}
 
     def retrieve_action(self, encoded_state):
-        if encoded_state not in self.cache:
-            return None
         if encoded_state not in self.cache:
             return None
         if "a" in self.cache[encoded_state]:

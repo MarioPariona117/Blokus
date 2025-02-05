@@ -82,7 +82,6 @@ def mine2_(obs: ObsType, new_obs: ObsType, action: BlokusAction) -> float:
     a = len(new_obs["expander_squares"][player])  # our expanders
     b = len(new_obs["expander_squares"][3 - player])  # opponent expanders
     value = (div(a, b) + div(b, a)) * abs(a - b)
-    # print(a, b, value)
     return value
 
 # def # value = div(a, b) - div(b, a) - (b - a) * 0.22

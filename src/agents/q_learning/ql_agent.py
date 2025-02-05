@@ -2,12 +2,15 @@ import random
 import pickle
 import numpy as np
 from ..agent import Agent
+import os
 from src.utils import encode_board_string, decode_board_string
 class QL_Agent(Agent):
     def __init__(
             self, 
+            board_size,
             name="QL_Agent", 
-            q_table_path=None, 
+            q_table_dir: str = "/root/Blokus/src/agents/cache/alpha_beta",
+            q_table_path: str = None,
             alpha=0.01, 
             gamma=0.995, 
             epsilon=1.0, 
@@ -15,7 +18,7 @@ class QL_Agent(Agent):
             min_epsilon=0.01, 
             parameter_update_frequency=1000, 
             estimated_steps=18,
-            training=True
+            training=True,
         ):
         self.left_reward_estimate, self.right_reward_estimate = -5, 1
         self.max_alpha, self.min_alpha = 0.1, 0.01
@@ -28,12 +31,17 @@ class QL_Agent(Agent):
         self.epsilon_decay = epsilon_decay
         self.min_epsilon = min_epsilon
         self.name = name
+        self.board_size = board_size  
         self.q_table_path = q_table_path
+        
+        if self.q_table_path is None:
+            self.q_table_path = f"{q_table_dir}/q_table_{self.board_size}.pkl"
+        self.load_q_table()
+
         self.learns = 0
         self.parameter_update_frequency = parameter_update_frequency
         self.estimated_steps = estimated_steps
         self.training = training
-        self.load_q_table()
 
     def estimated_reward_scale(self, estimated_reward):
         """Value output between 1 and sqrt(self.max_alpha / self.alpha)"""
@@ -52,19 +60,26 @@ class QL_Agent(Agent):
     
     def get_action(self, env, obs):
         state = encode_board_string(obs["state"])
-        if self.training: # Training mode
-            action = self.argmax(state)
-            if random.uniform(0, 1) < self.epsilon or not action:
-                action = random.choice(obs["possible_actions"]) # Explore
-        else: # Test mode
-            action = self.argmax(state)
-            if not action:
-                action = random.choice(obs["possible_actions"]) # If state not seen in training, random action
+        action = self.argmax(state)
+        if random.uniform(0, 1) < self.epsilon or not action:
+            action = random.choice(obs["possible_actions"])  # Random action if exploring or unseen state
         return action
     
     def save_q_table(self):
-        with open(self.q_table_path, 'wb') as file:
-            pickle.dump(self.q_table, file)
+        tmp_file_path = self.q_table_path + '.tmp'
+    
+        # Save the Q-table to the temporary file
+        with open(tmp_file_path, 'wb') as tmp_file:
+            pickle.dump(self.q_table, tmp_file)
+
+        # Rename the temporary file to the desired final file path
+        try:
+            os.rename(tmp_file_path, self.q_table_path)
+            print(f"Q-table successfully saved to {self.q_table_path}")
+        except Exception as e:
+            print(f"Error renaming file: {e}")
+            # Optionally, you can remove the temporary file here if renaming fails
+            # os.remove(tmp_file_path)
         
     def load_q_table(self):
         try:
@@ -119,10 +134,12 @@ class QL_Agent(Agent):
         return self.get_q_value(state, self.argmax(state))
 
     def test_mode(self):
+        assert self.training, "Agent must be in training mode to switch to test mode."
         self.epsilon_backup = self.epsilon
         self.epsilon = 0
         self.training = False
 
     def train_mode(self):
+        assert not self.training, "Agent must be in test mode to switch to training mode."
         self.training = True
         self.epsilon = self.epsilon_backup
