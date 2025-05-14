@@ -158,6 +158,9 @@ class BlokusEnv(gym.Env):
             ], # Locked squares for the current player
             "current_player": self.current_player, # ID of the current player
             "points": [None] + [self.agents_info[id].points for id in range(1, self.num_players + 1)],
+            "available_shapes": [None] + [
+                np.array(list(self.agents_info[id].available_shapes)) for id in range(1, self.num_players + 1)
+            ],
             "steps": self.steps
         }
     

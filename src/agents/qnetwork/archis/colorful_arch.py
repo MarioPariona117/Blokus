@@ -4,7 +4,7 @@ import numpy as np
 import torch.nn.functional as F
 import time
 
-from gymnasium_env.envs import BlokusAction, BlokusEnv
+from gymnasium_env.envs import BlokusAction, BlokusEnv, PIECE_SHAPE_IDS
 from gymnasium.core import ObsType
 
 from .base_arch import BaseArch
@@ -91,14 +91,19 @@ class ColorfulArch(BaseArch):
         self.resblock3 = ResBlock(self.channels3, self.channels4, downsample=False)
         self.resblock4 = ResBlock(self.channels4, self.channels5, downsample=False)
 
-        self.fc1 = nn.Linear(self.channels4 * self.board_size * self.board_size + 2 * self.board_size + 91, 256)
+        self.fc1 = nn.Linear(self.channels4 * self.board_size * self.board_size + 2 * self.board_size + 91 + 21 + 21, 256)
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 1)
 
         self.precomputed_encodings = self._precompute_action_encodings()
 
+        self.shape_to_int = {
+            shape: i for i, shape in enumerate(PIECE_SHAPE_IDS)
+        }
+
     def forward(self, encoded_actions):
         state, action = encoded_actions
+        state, state_flat = state
         if state.shape[0] == 0:
             raise ValueError("Empty state tensor")
             return torch.empty(0, device=x.device, dtype=torch.float32)
@@ -106,14 +111,14 @@ class ColorfulArch(BaseArch):
         action, action_flat = action
         x = torch.cat((state, action), dim=1)
         x = self.conv1(x)
-        _, C, H, W = x.shape  
+        _, C, H, W = x.shape
         # x = F.layer_norm(x, normalized_shape=x.shape[1:])
         x = F.relu(x)
         x = self.resblock1(x)
         x = self.resblock2(x)
         x = self.resblock3(x)
         x = x.view(x.size(0), -1)
-        x = torch.cat((x, action_flat), dim=1)
+        x = torch.cat((x, state_flat.squeeze(1), action_flat), dim=1)
         x = self.fc1(x)
         x = F.relu(self.fc2(x))
         x = self.fc3(x).squeeze(1)
@@ -137,7 +142,30 @@ class ColorfulArch(BaseArch):
         
 
         state_tensor = torch.cat([encoding, my_expanders.unsqueeze(0), his_expanders.unsqueeze(0)], dim=0)
-        return state_tensor.to(device)
+
+        my_available_shapes, his_available_shapes = [], []
+
+        if current_player in [1, 2]:
+            my_available_shapes = [
+                self.shape_to_int[shape] for shape in obs["available_shapes"][current_player]
+            ]
+
+            his_available_shapes = [
+                self.shape_to_int[shape] for shape in obs["available_shapes"][3 - current_player]
+            ]
+
+        my_action_mask = torch.zeros(21, dtype=torch.float32)
+        my_action_mask[my_available_shapes] = 1.0
+
+        his_action_mask = torch.zeros(21, dtype=torch.float32)
+        his_action_mask[his_available_shapes] = 1.0
+
+        state_list = torch.cat([
+            my_action_mask,
+            his_action_mask,
+        ], dim=0)
+
+        return (state_tensor.to(device), state_list.to(device))
     
     def encode_actions(self, action_ids, device='cpu'):
         action_tensors = self.precomputed_encodings[0][action_ids].to(device)
@@ -152,15 +180,21 @@ class ColorfulArch(BaseArch):
             actions: List of list of actions (subset of obs["possible_actions"]).
             device: Device.
         """
-        encoded_state = self.encode_state(obs, device=device)
+        encoded_state1, encoded_state2 = self.encode_state(obs, device=device)
         encoded_actions = self.encode_actions(actions, device=device)
-        repeated_state = encoded_state.unsqueeze(0).expand(len(actions), -1, -1, -1)
+        repeated_state1 = encoded_state1.unsqueeze(0).expand(len(actions), -1, -1, -1)
+        repeated_state2 = encoded_state2.unsqueeze(0).expand(len(actions), -1, -1)
+        repeated_state = (repeated_state1, repeated_state2)
         return (repeated_state, encoded_actions)
     
     def cat(self, list_of_encodings):
         # Concatenate the state and action tensors along the first dimension
         return (
-            torch.cat([encoding[0] for encoding in list_of_encodings], dim=0),
+            (
+                torch.cat([encoding[0][0] for encoding in list_of_encodings], dim=0),
+                torch.cat([encoding[0][1] for encoding in list_of_encodings], dim=0) 
+            ),
+            # torch.cat([encoding[0] for encoding in list_of_encodings], dim=0),
             (
                 torch.cat([encoding[1][0] for encoding in list_of_encodings], dim=0),
                 torch.cat([encoding[1][1] for encoding in list_of_encodings], dim=0) 

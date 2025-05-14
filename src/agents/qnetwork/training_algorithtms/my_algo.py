@@ -213,8 +213,8 @@ class MyAlgo:
             target_q_values = rewards + self.gamma * next_q_values 
 
         # Compute loss
-        loss = F.mse_loss(current_q_values, target_q_values)
-
+        # loss = F.mse_loss(current_q_values, target_q_values)
+        loss = F.smooth_l1_loss(current_q_values, target_q_values, beta=0.5)
         # Backpropagation
         self.optimizer.zero_grad()
         loss.backward()

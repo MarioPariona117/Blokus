@@ -189,12 +189,13 @@ class TrainDQN:
             "epsilon": self.epsilon,
         }
 
-        # Log loss to Wandb
-        if self.wandb_enabled:
-            self.run.log(logs)
-
         # Update target network
         self.step_count += 1
+
+        # Log loss to Wandb
+        if self.wandb_enabled:
+            self.run.log(logs, step=self.step_count)
+
         if self.step_count % self.target_update_freq == 0:
             self.target_net.load_state_dict(self.agent.policy_net.state_dict())
 
@@ -222,49 +223,6 @@ class TrainDQN:
             "lr": self.optimizer.param_groups[0]["lr"],
             "device": str(self.device),
             "model_class": self.agent.model_class.__name__,
-            "model_path": self.agent.model_path,
-            "wandb_enabled": self.wandb_enabled,
-            "wandb_project": self.wandb_project,
-            "wandb_run_id": wandb.run.id if self.wandb_enabled else None,
-            "wandb_run_url": wandb.run.get_url() if self.wandb_enabled else None,
-            "wandb_run_name": wandb.run.name if self.wandb_enabled else None,
-            "wandb_run_notes": wandb.run.notes if self.wandb_enabled else None,
-            "wandb_run_tags": wandb.run.tags if self.wandb_enabled else None,
-            "wandb_run_config": wandb.config if self.wandb_enabled else None,
-            "wandb_run_history": wandb.run.history() if self.wandb_enabled else None,
-            "wandb_run_summary": wandb.run.summary() if self.wandb_enabled else None,
-            "wandb_run_files": wandb.run.files() if self.wandb_enabled else None,
-            "wandb_run_artifacts": wandb.run.artifacts() if self.wandb_enabled else None,
-            "wandb_run_artifact": wandb.run.artifact() if self.wandb_enabled else None,
-            "wandb_run_artifact_url": wandb.run.artifact_url() if self.wandb_enabled else None,
-            "wandb_run_artifact_path": wandb.run.artifact_path() if self.wandb_enabled else None,
-            "wandb_run_artifact_name": wandb.run.artifact_name() if self.wandb_enabled else None,
-            "wandb_run_artifact_version": wandb.run.artifact_version() if self.wandb_enabled else None,
-            "wandb_run_artifact_type": wandb.run.artifact_type() if self.wandb_enabled else None,
-            "wandb_run_artifact_description": wandb.run.artifact_description() if self.wandb_enabled else None,
-            "wandb_run_artifact_metadata": wandb.run.artifact_metadata() if self.wandb_enabled else None,
-            "wandb_run_artifact_metadata_url": wandb.run.artifact_metadata_url() if self.wandb_enabled else None,
-            "wandb_run_artifact_created_at": wandb.run.created_at if self.wandb_enabled else None,
-            "wandb_run_artifact_updated_at": wandb.run.updated_at if self.wandb_enabled else None,
-            "wandb_run_artifact_size": wandb.run.size if self.wandb_enabled else None,
-            "wandb_run_artifact_state": wandb.run.state if self.wandb_enabled else None,
-            "wandb_run_artifact_labels": wandb.run.labels if self.wandb_enabled else None,
-            "wandb_run_artifact_aliases": wandb.run.aliases if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_hash": wandb.run.commit_hash if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_message": wandb.run.commit_message if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_author": wandb.run.commit_author if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_date": wandb.run.commit_date if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_tags": wandb.run.commit_tags if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_notes": wandb.run.commit_notes if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata": wandb.run.commit_metadata if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata_url": wandb.run.commit_metadata_url if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata_path": wandb.run.commit_metadata_path if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata_name": wandb.run.commit_metadata_name if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata_version": wandb.run.commit_metadata_version if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata_type": wandb.run.commit_metadata_type if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata_description": wandb.run.commit_metadata_description if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata_metadata": wandb.run.commit_metadata_metadata if self.wandb_enabled else None,
-            "wandb_run_artifact_commit_metadata_metadata_url": wandb.run.commit_metadata_metadata_url if self.wandb_enabled else None,
         }
         config_path = os.path.join(self.agent.dir, "train_config.json")
         with open(config_path, "w") as f:
