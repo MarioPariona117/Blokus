@@ -57,7 +57,7 @@ class BlokusAction:
                 # self.piece = BlokusPieceManager.get_piece(self.piece)
             assert action_id is None
             if transform:
-                self._transform(*transform)
+                self.transform(*transform)
             self._update_id()
         else:
             raise ValueError("Either action_id or action_tuple must be provided")
@@ -88,8 +88,12 @@ class BlokusAction:
     def action_tuple(self):
         return self._x, self._y, self.piece
     
+    @property
+    def body(self):
+        return [(self.x + x, self.y + y) for x, y in self.piece.body]
+    
     def __str__(self):
-        return f"Action(id = {self.action_id} x = {self._x}, y = {self._y}, p = {self.piece})"
+        return f"Action(id = {self.action_id}, x = {self._x}, y = {self._y}, p = {self.piece})"
     
     def update_position(self, dx: int = 0, dy: int = 0):
         self._x += dx

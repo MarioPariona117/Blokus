@@ -3,10 +3,12 @@ from typing import List, Tuple, Dict
 import numpy as np
 
 __all__ = [
+    'Vector2',
     'BlokusPiece',
-    'BlokusPieceTransformations',
+    'PIECE_ORDER',
+    'PIECE_SHAPE_IDS',
     'BlokusPieceManager', 
-    'PIECE_SHAPE_IDS'
+    'BlokusPieceTransformations',
 ]
 
 Vector2 = namedtuple('Vector2', ['x', 'y'])
@@ -36,6 +38,8 @@ SAMPLE_SHAPE = {
 }
 
 PIECE_SHAPE_IDS = list(SAMPLE_SHAPE.keys())
+
+PIECE_ORDER = {shape_id: idx for idx, shape_id in enumerate(PIECE_SHAPE_IDS)}
 
 class BlokusPiece:
     def __init__(
@@ -217,6 +221,7 @@ class BlokusPieceTransformations:
     
 class BlokusPieceManager:
     PIECE_VARIANTS_COUNT: int = 91
+    NUM_PIECES: int = 21
     pieces: dict[str, BlokusPieceTransformations] = None
     # This will ensure that the pieces are initialized once when the class is first used.
     def __new__(cls, *args, **kwargs):

@@ -1,42 +1,47 @@
-from typing import Callable, Tuple, List
+from typing import Callable, Tuple, List, SupportsFloat, SupportsInt
 import gymnasium as gym
-from typing import SupportsFloat, SupportsInt
+from tqdm import tqdm
 import numpy as np
-import random
 import threading
+import random
 import pickle
 import time
-from gymnasium.core import ObsType, ActType
-from tqdm import tqdm
-from ..minimax_agent import MiniMaxAgent
+import os
+
 from src.utils import encode_board_bytes, decode_board_bytes, time_function
-from gymnasium_env.envs.blokus_env import BlokusEnv, BlokusAction, BlokusPieceManager
-from .heuristics import my_heu
+from gymnasium_env import BlokusEnv, BlokusAction, BlokusPieceManager
+from ..minimax.minimax_agent import MiniMaxAgent
+from gymnasium.core import ObsType, ActType
+
 from .cache_manager import CacheManager
-import wandb
+# import wandb
 
 class ABPruningAgent(MiniMaxAgent):
     MAX_DEPTH = 100
     def __init__(
         self, 
         board_size : int, 
+        use_cache: bool,
+        cache_dir: str = None, 
         name: str = "ABPruning", 
         depth: int = -1, 
-        cache_dir: str = "/Users/mario/Documents/proj/cam/Blokus/src/agents/cache/alpha_beta", 
-        use_cache: bool = True, 
-        sorted_order: Callable[[BlokusEnv, ObsType, BlokusAction], float | Tuple[float, float]] = lambda x: my_heu(*x),
+        heuristic: Callable[[BlokusEnv, ObsType, BlokusAction], float | Tuple[float, float]] = lambda env, obs, action: 0.0,
         testing_mode: Tuple[bool, int | None] = (False, None)
     ):
         """
         Initializes the ABPruningAgent.
 
-        :param board_size: The size of the Blokus board.
-        :param name: The name of the agent. Default is "ABPruning".
-        :param depth: The depth of the search tree for the minimax algorithm. Default is 100.
-        :param cache_dir: The directory where the cache will be stored. Default is None.
-        :param use_cache: Whether to use caching to store previously computed states. Default is True.
-        :param sorted_order: A function to sort the actions based on a heuristic. It takes an environment, an observation, and an action as input. Default is None.
-
+        Args:
+            use_cache (bool): Whether to use caching to store previously computed states.
+            board_size (int): The size of the Blokus board.
+            name (str, optional): The name of the agent. Defaults to "ABPruning".
+            depth (int, optional): The depth of the search tree for the minimax algorithm. Defaults to -1.
+            cache_dir (str, optional): The directory where the cache will be stored. Defaults to None.
+            heuristic (Callable[[BlokusEnv, ObsType, BlokusAction], float | Tuple[float, float]], optional): 
+            A function to sort the actions based on a heuristic. It takes an environment, an observation, 
+            and an action as input. Defaults to my_heu.
+            testing_mode (Tuple[bool, int | None], optional): A tuple indicating whether testing mode is enabled 
+            and the depth difference for testing. Defaults to (False, None).
         """
         self.name = name
         assert depth >= -1, "Depth must be greater than or equal to -1"
@@ -45,11 +50,16 @@ class ABPruningAgent(MiniMaxAgent):
         self.env: BlokusEnv = gym.make('gymnasium_env/Blokus-v0', board_size=board_size, num_players=2, disable_env_checker=True, testing_mode=False)
         self.env = self.env.unwrapped
         self.env.order_enforce = False
-        cache_path = f"{cache_dir}/alpha_beta_depth{depth}_bz{board_size}_bytes.pkl"
         self.use_cache = use_cache
         if self.use_cache:
-            self.cache_manager = CacheManager(cache_path=cache_path, time_update=120, time_threshold=1200, size_threshold=1e8)
-        self.sorted_order = sorted_order
+            if cache_dir is None:
+                cache_dir = os.path.join(os.path.dirname(__file__), "cache", "alpha_beta")
+            self.cache_path = os.path.join(cache_dir, f"ab_depth{self.depth}_bz{board_size}_bytes.pkl")
+
+            self.cache_manager = CacheManager(cache_path=self.cache_path, time_update=120, time_threshold=1200, size_threshold=1e8)
+        else:
+            print("NOTE: Cache not being used.")
+        self.heuristic = heuristic
         ##############################
         self.num_pruned = 0
         self.visited_states = 0
@@ -58,7 +68,8 @@ class ABPruningAgent(MiniMaxAgent):
         self.depth_diff_test = testing_mode[1]
         self.counter = 0
         self.if_print = 1
-        wandb.init(project="ABPruningAgent", config={"board_size": board_size})
+        # super().__init__(board_size=board_size, name=name, depth=self.depth, use_cache=use_cache, cache_dir=cache_path)
+        # wandb.init(project="ABPruningAgent", config={"board_size": board_size})
 
     # @time_function
     def get_action(self, env: BlokusEnv, obs: ObsType) -> ActType:
@@ -92,7 +103,15 @@ class ABPruningAgent(MiniMaxAgent):
         state = self.env.capture_state()
         action_ids = obs["possible_actions"]
         actions = [BlokusAction(board_size=self.board_size, action_id=action_id) for action_id in action_ids]
-        sorted_actions: List[BlokusAction] = sorted(actions, key=lambda action: self.sorted_order((self.env, obs, action)))
+        # next_obss = self.env.next_obss(action_ids)
+        sorted_actions: List[BlokusAction] = sorted(
+            actions, 
+            key = lambda action: (-self.heuristic(
+                env=self.env, 
+                obs=obs, 
+                action=action, 
+            ))
+        )
         if self.testing_mode:
             if depth >= self.depth - self.depth_diff_test:
                 sorted_actions = tqdm(sorted_actions)
@@ -128,8 +147,8 @@ class ABPruningAgent(MiniMaxAgent):
             if alpha >= beta:
                 self.num_pruned += 1
                 pruned_percentage = (self.num_pruned / self.visited_states) * 100 if self.visited_states > 0 else 0
-                if self.visited_states % 1000 == 0:
-                    wandb.log({"num_pruned": self.num_pruned, "visited_states": self.visited_states, "pruned_percentage": pruned_percentage})
+                # if self.visited_states % 1000 == 0:
+                #     wandb.log({"num_pruned": self.num_pruned, "visited_states": self.visited_states, "pruned_percentage": pruned_percentage})
         
         if self.use_cache:
             self.cache_manager.update_cache(encode_board_bytes(obs["state"]), best_action.action_id, best_value, obs["steps"])

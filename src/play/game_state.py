@@ -1,0 +1,5 @@
+class GameState:
+    WAITING = 0
+    CHOOSING_PIECE = 1
+    CHOOSING_TRANSFORMATION = 2
+    PLACING_PIECE = 3

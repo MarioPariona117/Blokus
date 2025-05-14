@@ -1,18 +1,16 @@
+from gymnasium.core import ActType, ObsType
 import random
-from gymnasium.core import ActType
+from typing import Optional
+
+from gymnasium_env import BlokusEnv
 
 from .agent import Agent
-
-
-def random_policy(actions):
-    if len(actions) == 0:
-        return None
-    return random.choice(actions)
-
 class RandomAgent(Agent):
-    def __init__(self, name="Agent"):
-        super().__init__(name, "random", random_policy)
+    def __init__(self, name: str = "RandomAgent", seed: Optional[int] = None):
+        super().__init__(name=name)
+        self.rng = random.Random(seed) 
 
-    def get_action(self, env, obs) -> ActType:
+    def get_action(self, env: BlokusEnv, obs: ObsType) -> ActType:
         actions = obs["possible_actions"]
-        return random.choice(actions)
+        assert len(actions) > 0, "No possible actions available"
+        return self.rng.choice(actions)

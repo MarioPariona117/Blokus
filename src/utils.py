@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 import numpy as np
 import time 
 from gymnasium_env.envs import BlokusEnv, BlokusAction
@@ -41,15 +40,6 @@ def time_function(func):
         print(f"Function {func.__name__} took {end_time - start_time:.4f} seconds")
         return result, timed
     return wrapper
-
-@contextmanager
-def env_action_context(env: BlokusEnv, action: BlokusAction):
-    state = env.capture_state()
-    try:
-        new_obs, _, _, _, _ = env.step(action.action_id)
-        yield new_obs  
-    finally:
-        env.restore_state(state)
 
 def dbg(variable):
     frame = inspect.currentframe().f_back

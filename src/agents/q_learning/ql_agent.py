@@ -1,16 +1,20 @@
 import random
 import pickle
 import numpy as np
-from ..agent import Agent
 import os
+from datetime import datetime
+
+from src.agents import Agent
 from src.utils import encode_board_string, decode_board_string
+from proj_config import MODEL_DIR
+
 class QL_Agent(Agent):
     def __init__(
             self, 
             board_size,
             name="QL_Agent", 
-            q_table_dir: str = "/root/Blokus/src/agents/cache/alpha_beta",
-            q_table_path: str = None,
+            model_folder: str = None,
+            dir: str = None,
             alpha=0.01, 
             gamma=0.995, 
             epsilon=1.0, 
@@ -19,6 +23,7 @@ class QL_Agent(Agent):
             parameter_update_frequency=1000, 
             estimated_steps=18,
             training=True,
+            
         ):
         self.left_reward_estimate, self.right_reward_estimate = -5, 1
         self.max_alpha, self.min_alpha = 0.1, 0.01
@@ -32,16 +37,32 @@ class QL_Agent(Agent):
         self.min_epsilon = min_epsilon
         self.name = name
         self.board_size = board_size  
-        self.q_table_path = q_table_path
-        
-        if self.q_table_path is None:
-            self.q_table_path = f"{q_table_dir}/q_table_{self.board_size}.pkl"
-        self.load_q_table()
+
+        if dir is None:
+            if model_folder is None:
+                model_folder = self.generate_model_folder()
+
+            self.dir = os.path.join(
+                MODEL_DIR,
+                self.__class__.__name__.lower(),
+                f"board_{self.board_size}",
+                model_folder
+            )
+        else:
+            self.dir = dir
+        self.load_model()
+
+        os.makedirs(name=self.dir, exist_ok=True)
 
         self.learns = 0
         self.parameter_update_frequency = parameter_update_frequency
         self.estimated_steps = estimated_steps
         self.training = training
+
+    def generate_model_folder(self) -> str:
+        """Generates a file name based on the current date and time."""
+        now = datetime.now()
+        return f"{now.strftime('%Y%m%d_%H%M%S')}"
 
     def estimated_reward_scale(self, estimated_reward):
         """Value output between 1 and sqrt(self.max_alpha / self.alpha)"""
@@ -65,31 +86,33 @@ class QL_Agent(Agent):
             action = random.choice(obs["possible_actions"])  # Random action if exploring or unseen state
         return action
     
-    def save_q_table(self):
-        tmp_file_path = self.q_table_path + '.tmp'
+    def save_q_table(self, path: str | None = None) -> None:
+        path = path or os.path.join(self.dir, "q_table.pkl")
+        tmp_file_path = f"{path}.tmp"
     
         # Save the Q-table to the temporary file
         with open(tmp_file_path, 'wb') as tmp_file:
             pickle.dump(self.q_table, tmp_file)
 
-        # Rename the temporary file to the desired final file path
         try:
             os.rename(tmp_file_path, self.q_table_path)
             print(f"Q-table successfully saved to {self.q_table_path}")
         except Exception as e:
             print(f"Error renaming file: {e}")
-            # Optionally, you can remove the temporary file here if renaming fails
-            # os.remove(tmp_file_path)
         
-    def load_q_table(self):
-        try:
-            with open(self.q_table_path, 'rb') as file:
-                self.q_table = pickle.load(file)
-            print("Hey, Q-table loaded from", self.q_table_path)
-        except Exception as e:
-            # print(e)
+    def load_model(self, path: str| None = None) -> None:
+        path = path or os.path.join(self.dir, "q_table.pkl")
+        if os.path.exists(path):
+            try:
+                with open(path, 'rb') as file:
+                    self.q_table = pickle.load(file)
+                print("Hey, Q-table loaded from", path)
+            except Exception as e:
+                print(f"Q-table not found at {path}, initializing new Q-table.")
+                raise e
+        else:
+            print(f"Q-table file not found at {path}, initializing new Q-table.")
             self.q_table = {}
-            # raise e
 
     def create_q_table(self, state: str):
         if state not in self.q_table:
@@ -133,13 +156,13 @@ class QL_Agent(Agent):
     def maxi(self, state: str) -> float:
         return self.get_q_value(state, self.argmax(state))
 
-    def test_mode(self):
+    def eval(self):
         assert self.training, "Agent must be in training mode to switch to test mode."
         self.epsilon_backup = self.epsilon
         self.epsilon = 0
         self.training = False
 
-    def train_mode(self):
+    def train(self):
         assert not self.training, "Agent must be in test mode to switch to training mode."
         self.training = True
         self.epsilon = self.epsilon_backup

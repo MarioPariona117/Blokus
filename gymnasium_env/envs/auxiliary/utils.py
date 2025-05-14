@@ -1,20 +1,23 @@
-from gymnasium.core import ActType
-from typing import Tuple
 import numpy as np
 import time
 
-PIECE_IDS = ['1', '2', 'I3', 'V3', 'I4', 'L4', 'O', 'T4', 'Z4', 'F', 'I5', 'L5', 'N', 'P', 'T5', 'U', 'V5', 'W', 'X', 'Y', 'Z5']
+def encode(x: int, y: int, idx: int) -> int:
+    return ((-x) << 13) | ((-y & 7) << 10) | idx  # Mask to avoid sign extension
 
-def encode(x: int, y: int, idx: ActType) -> int:
-    x *= -1
-    y *= -1
-    return (x << 13) + (y << 10) + idx
-
-def decode(action: int) -> Tuple[int, int, ActType]:
-    x = (action >> 13) * -1
-    y = ((action >> 10) & 7) * -1
-    idx = action & 1023
+def decode(action):
+    x = -(action >> 13)  # Extract top 3 bits and negate
+    y = -((action >> 10) & 7)  # Extract next 3 bits and negate
+    idx = action & 1023  # Mask to get last 10 bits (idx)
     return x, y, idx
+
+def encode_batch(x: np.ndarray, y: np.ndarray, idx: np.ndarray) -> np.ndarray:
+    return ((-x) << 13) | ((-y & 7) << 10) | idx  # Mask to avoid sign extension
+
+def decode_batch(actions: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    x = -(actions >> 13)
+    y = -((actions >> 10) & 7)
+    idx = actions & 1023
+    return np.stack((x, y, idx), axis=-1)
 
 def time_function(func):
     def wrapper(*args, **kwargs):
