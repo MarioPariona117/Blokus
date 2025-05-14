@@ -17,6 +17,19 @@ profile_output
 ## models
 *.pkl
 *.pth
+*.zip
+models/
+
+## experiments
+notebooks/
+
+## my cache
+cache/
+deploy
+
+# loggers
+*.log
+wandb/
 
 ## videos
 blokus_games/
