@@ -19,7 +19,9 @@ from gymnasium import Wrapper
 from src.agents.qnetwork.qnetwork_agent import QNetworkAgent
 from src.agents import Agent, RandomAgent
 
-class MyAlgo:
+from .base_trainer import BaseTrainer
+
+class MyAlgo(BaseTrainer):
     def __init__(
         self,
         device: str,
@@ -37,6 +39,8 @@ class MyAlgo:
         opponent_stochasticity: float = 0.25,
         use_wandb: bool = False,
         wandb_project: str = "myalgo-training",
+        *args, 
+        **kwargs
     ):
         """
         Initializes the MyAlgo class.
@@ -57,6 +61,7 @@ class MyAlgo:
             use_wandb (bool, optional): Whether to use Weights & Biases for logging. Defaults to False.
             wandb_project (str, optional): Name of the Weights & Biases project. Defaults to "myalgo-training".
         """
+        super().__init__(agent=agent, *args, **kwargs)
         # Core parameters
         self.gamma = gamma
         self.epsilon = epsilon
@@ -74,7 +79,8 @@ class MyAlgo:
         self.target_net.eval()
 
         # Opponent Network setup
-        self.opponent_policy_net = copy.deepcopy(self.agent.policy_net)
+        self.opponent_agent = copy.deepcopy(self.agent)
+        
         self.load_opponent_model()
         self.opponent_target_net.eval()
 
@@ -86,10 +92,28 @@ class MyAlgo:
             env = wrapper(env)
 
         self.env = env
+        self.obs, info = self.env.reset()
 
         # Optimizer
-        self.optimizer = optim.Adam(self.agent.policy_net.parameters(), lr=lr)
-        
+        self.optimizer = optim.Adam(
+            chain(self.agent.policy_net.parameters(), self.opponent_agent.policy_net.parameters()), lr=lr
+        )
+
+        initial_lr = lr
+        min_lr = lr / 10
+        factor = self.epsilon_decay
+        def lr_lambda(epoch):
+            if factor ** epoch < min_lr / initial_lr:
+                return 1
+            elif factor ** (epoch+1) < min_lr / initial_lr:
+                return min_lr / factor ** epoch # no, the part when epoch is too big missing
+            else:
+                return factor
+
+        self.lr_scheduler = optim.lr_scheduler.MultiplicativeLR(
+            self.optimizer, lr_lambda=lr_lambda
+        )
+
         # Replay buffer
         self.replay_buffer = deque(maxlen=buffer_size)
 
@@ -119,67 +143,68 @@ class MyAlgo:
         """Loads the opponent model from the specified path."""
         opponent_model_path = os.path.join(self.agent.dir, "opponent_model.pth")
         if os.path.exists(opponent_model_path):
-            self.opponent_policy_net.load_state_dict(torch.load(opponent_model_path, map_location=self.device))
+            self.opponent_agent.policy_net.load_state_dict(torch.load(opponent_model_path, map_location=self.device))
         else:
-            self.opponent_policy_net = copy.deepcopy(self.agent.policy_net)
+            # self.opponent_policy_net = copy.deepcopy(self.agent.policy_net)
             print(f"Opponent model not found at {opponent_model_path}")
-        self.opponent_target_net = copy.deepcopy(self.opponent_policy_net)
+        self.opponent_target_net = copy.deepcopy(self.opponent_agent.policy_net)
         
     def collect_trajectories(self, max_steps: int, pbar: bool):
         self.agent.eval()
-        obs, info = self.env.reset()
+        # self.obs, info = self.env.reset()
 
         prange = range(max_steps)
         if pbar: 
             prange = tqdm(prange, desc="Collecting trajectories")
 
         for _ in prange:
-            random_num = random.random()
+            random_num = self.rng.random()
 
             # Conditional for when to be random for my agent (epsilon greedy) and opponent (stochasticity field)
-            if (obs["current_player"] != self.player_turn and random_num < self.opponent_stochasticity) or \
-            (obs["current_player"] == self.player_turn and random_num < self.epsilon): 
-                action_id = random.choice(obs["possible_actions"])
+            if (self.obs["current_player"] != self.player_turn and random_num < self.opponent_stochasticity) or \
+            (self.obs["current_player"] == self.player_turn and random_num < self.epsilon): 
+                action_id = self.rng.choice(self.obs["possible_actions"])
             else:
                 with torch.no_grad(): 
-                    q_values = self.agent.get_q_values(obs).detach()
+                    agent = self.agent if self.obs["current_player"] == self.player_turn else self.opponent_agent
+                    q_values = agent.get_q_values(self.obs).detach()
                     
-                    if obs["current_player"] == 1:
+                    if self.obs["current_player"] == 1:
                         action_idx = q_values.argmax().item()
                     else: 
-                        action_probs = F.softmax(q_values, dim=0)
+                        action_probs = F.softmax(q_values * 10, dim=0)
                         action_idx = torch.multinomial(action_probs, 1).item()
-                action_id = obs["possible_actions"][action_idx]
+                action_id = self.obs["possible_actions"][action_idx]
 
             next_obs, reward, term, trunc, info = self.env.step(action_id)
 
             assert not trunc
             done = term
 
-            self.replay_buffer.append((obs, action_id, reward, next_obs, done))
+            self.replay_buffer.append((self.obs, action_id, reward, next_obs, done))
 
-            obs = next_obs
+            self.obs = next_obs
 
             if done:
-                obs, info = self.env.reset()
+                self.obs, info = self.env.reset()
                 
     def optimize_model(self):
         """Performs a single optimization step on the policy network."""
         if len(self.replay_buffer) < self.batch_size:
             return
 
-        batch = random.sample(self.replay_buffer, self.batch_size)
+        batch = self.rng.sample(self.replay_buffer, self.batch_size)
         obss, actions, rewards, next_obss, dones = zip(*batch)
 
         # Convert to tensors
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
-        my_turns = torch.tensor([obs["current_player"] == self.player_turn for obs in obss], dtype=torch.bool).to(self.device)
-        my_next_turns = torch.tensor([obs["current_player"] == self.player_turn for obs in next_obss], dtype=torch.bool).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)
+        dones = torch.tensor(dones, dtype=torch.float32, device=self.device)
+        my_turns = torch.tensor([obs["current_player"] == self.player_turn for obs in obss], dtype=torch.bool, device=self.device)
+        my_next_turns = torch.tensor([obs["current_player"] == self.player_turn for obs in next_obss], dtype=torch.bool, device=self.device)
         switches = torch.tensor(
             [obs["current_player"] != next_obs["current_player"] for obs, next_obs in zip(obss, next_obss)],
             dtype=torch.float32
-        ).to(self.device)
+        , device=self.device)
 
         # Compute current Q values
         encoded_actions = self.target_net.cat([
@@ -187,7 +212,7 @@ class MyAlgo:
             for obs, action in zip(obss, actions)
         ])
         my_current_q_values = self.agent.policy_net(encoded_actions)
-        opponent_current_q_values = self.opponent_policy_net(encoded_actions)
+        opponent_current_q_values = self.opponent_agent.policy_net(encoded_actions)
         current_q_values = torch.where(my_turns, my_current_q_values, opponent_current_q_values)
 
         with torch.no_grad():
@@ -199,7 +224,7 @@ class MyAlgo:
             my_aux = self.target_net(repeated_encoded_actions)
             opponent_aux = self.opponent_target_net(repeated_encoded_actions)
 
-            repeated_my_next_turns = torch.cat([my_next_turns[idx].expand(len(next_obs["possible_actions"])) for idx, next_obs in enumerate(next_obss)]).to(self.device)
+            repeated_my_next_turns = torch.cat([my_next_turns[idx].expand(len(next_obs["possible_actions"])) for idx, next_obs in enumerate(next_obss)])
             aux = torch.where(repeated_my_next_turns, my_aux, opponent_aux)
 
             accumulated_idx = list(accumulate(chain([0], [len(obs["possible_actions"]) for obs in next_obss])))
@@ -208,7 +233,7 @@ class MyAlgo:
                 torch.max(aux[accumulated_idx[idx]:accumulated_idx[idx + 1]]) 
                 if accumulated_idx[idx] != accumulated_idx[idx + 1] else 0.0 # if empty, set to 0
                 for idx in range(self.batch_size)
-            ]).to(self.device)
+            ], device=self.device)
             next_q_values = max_next_q_values * (1 - dones) * (1 - 2 * switches)
             target_q_values = rewards + self.gamma * next_q_values 
 
@@ -241,32 +266,41 @@ class MyAlgo:
     def save_model(self):
         """Saves the model to the given path."""
         self.agent.save_model()
-        self.save_opponent_model()
+        self.opponent_agent.save_model(path=os.path.join(self.agent.dir, "opponent_model.pth"))
         self.save_traning_config()
 
     def save_traning_config(self):
         """Saves the training configuration to a JSON file."""
-        config = {
+        training_config = {
+            # Environment & agent setup
             "board_size": self.board_size,
+            "player_turn": self.player_turn,
+
+            # Training hyperparameters
             "gamma": self.gamma,
-            "lr": self.optimizer.param_groups[0]["lr"],
-            "batch_size": self.batch_size,
-            "buffer_size": len(self.replay_buffer),
-            "target_update_freq": self.target_update_freq,
+            "epsilon": self.epsilon,
             "epsilon_decay": self.epsilon_decay,
             "min_epsilon": self.min_epsilon,
-            "player_turn": self.player_turn,
+            "batch_size": self.batch_size,
+            "buffer_size": len(self.replay_buffer),
+            "lr": self.optimizer.param_groups[0]["lr"],
+            "target_update_freq": self.target_update_freq,
+            "opponent_stochasticity": self.opponent_stochasticity,
+
+            # Meta info
+            "device": str(self.device),
+            "model_class": self.agent.model_class.__name__,
+            "iterations": self.step_count,
+
+            # Logging / tracking
+            "project-name": self.run.project,
+            "run-id": self.run.id,
         }
         config_path = os.path.join(self.agent.dir, "training_config.json")
         with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
-
-    def save_opponent_model(self):
-        """Saves the opponent model to the specified path."""
-        opponent_model_path = os.path.join(self.agent.dir, "opponent_model.pth")
-        torch.save(self.opponent_policy_net.state_dict(), opponent_model_path)
-        torch.save(self.opponent_target_net.state_dict(), opponent_model_path)
+            json.dump(training_config, f, indent=2)
 
     def update_epsilon(self):
         """Decay epsilon for exploration."""
         self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+    

@@ -23,7 +23,8 @@ class QL_Agent(Agent):
             parameter_update_frequency=1000, 
             estimated_steps=18,
             training=True,
-            
+            *args, 
+            **kwargs
         ):
         self.left_reward_estimate, self.right_reward_estimate = -5, 1
         self.max_alpha, self.min_alpha = 0.1, 0.01
@@ -58,6 +59,7 @@ class QL_Agent(Agent):
         self.parameter_update_frequency = parameter_update_frequency
         self.estimated_steps = estimated_steps
         self.training = training
+        super().__init__(name=name, *args, **kwargs)
 
     def generate_model_folder(self) -> str:
         """Generates a file name based on the current date and time."""
@@ -82,8 +84,8 @@ class QL_Agent(Agent):
     def get_action(self, env, obs):
         state = encode_board_string(obs["state"])
         action = self.argmax(state)
-        if random.uniform(0, 1) < self.epsilon or not action:
-            action = random.choice(obs["possible_actions"])  # Random action if exploring or unseen state
+        if self.rng.uniform(0, 1) < self.epsilon or not action:
+            action = self.rng.choice(obs["possible_actions"])  # Random action if exploring or unseen state
         return action
     
     def save_q_table(self, path: str | None = None) -> None:

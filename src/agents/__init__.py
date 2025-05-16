@@ -2,6 +2,7 @@ import gymnasium as gym
 
 from .agent import Agent
 from .random_agent import RandomAgent
+from .mixed_agent import MixedAgent
 from .minimax.minimax_agent import MiniMaxAgent
 from .ab_pruning.ab_agent import ABPruningAgent
 from .heuristic.heuristic_agent import HeuristicAgent

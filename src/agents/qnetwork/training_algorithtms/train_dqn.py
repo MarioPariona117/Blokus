@@ -17,9 +17,11 @@ from gymnasium_env import BlokusAction, BlokusEnv, SingleAgentBlokusEnv
 from src.agents import Agent, RandomAgent
 from src.agents.qnetwork.qnetwork_agent import QNetworkAgent
 
+from .base_trainer import BaseTrainer
+
 from gymnasium import Wrapper
 
-class TrainDQN:
+class TrainDQN(BaseTrainer):
     def __init__(
         self,
         device: str,
@@ -36,6 +38,8 @@ class TrainDQN:
         min_epsilon: float = 0.1,
         use_wandb: bool = False,
         wandb_project: str = "dqn-training",
+        *args, 
+        **kwargs
     ):
         """
         Trains the DQN agent against an embedded agent using the DQN algorithm.
@@ -110,6 +114,7 @@ class TrainDQN:
                     "player_turn": player_turn,
                 },
             )
+        super().__init__(name="TrainDQN", *args, **kwargs)
 
     def collect_trajectories(self, max_steps: int, pbar: bool, hidden_agent: Agent = RandomAgent()):
         self.agent.eval()
@@ -121,8 +126,8 @@ class TrainDQN:
             prange = tqdm(prange, desc="Collecting trajectories")
 
         for _ in prange:
-            if random.random() < self.epsilon:
-                action_id = random.choice(obs["possible_actions"])
+            if self.rng.random() < self.epsilon:
+                action_id = self.rng.choice(obs["possible_actions"])
             else:
                 q_values = self.agent.get_q_values(obs)
                 action_idx = q_values.argmax().item()
@@ -148,7 +153,7 @@ class TrainDQN:
         if len(self.replay_buffer) < self.batch_size:
             return
 
-        batch = random.sample(self.replay_buffer, self.batch_size)
+        batch = self.rng.sample(self.replay_buffer, self.batch_size)
         obss, actions, rewards, next_obss, dones = zip(*batch)
 
         encoded_actions = self.target_net.cat([
@@ -206,23 +211,33 @@ class TrainDQN:
         """Saves the model to the given path."""
         self.agent.save_model()
         self.save_training_config()
-        torch.save(self.agent.policy_net.state_dict(), self.model_path)
+        # torch.save(self.agent.policy_net.state_dict(), self.model_path)
 
     def save_training_config(self):
         """Saves the configuration to a JSON file."""
         training_config = {
+            # Environment & agent setup
             "board_size": self.board_size,
             "player_turn": self.player_turn,
+
+            # Training hyperparameters
             "gamma": self.gamma,
             "epsilon": self.epsilon,
             "epsilon_decay": self.epsilon_decay,
             "min_epsilon": self.min_epsilon,
             "batch_size": self.batch_size,
             "buffer_size": len(self.replay_buffer),
-            "target_update_freq": self.target_update_freq,
             "lr": self.optimizer.param_groups[0]["lr"],
+            "target_update_freq": self.target_update_freq,
+
+            # Meta info
             "device": str(self.device),
             "model_class": self.agent.model_class.__name__,
+            "iterations": self.step_count,
+
+            # Logging / tracking
+            "project-name": self.run.project,
+            "run-id": self.run.id,
         }
         config_path = os.path.join(self.agent.dir, "train_config.json")
         with open(config_path, "w") as f:

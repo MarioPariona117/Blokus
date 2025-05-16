@@ -14,12 +14,14 @@ class HeuristicAgent(Agent):
             ],
             board_size: int,
             name: str = "HeuristicAgent", 
+            *args,
+            **kwargs
         ):
         
-        super().__init__(name=name)
         self.board_size = board_size
         self.env = BlokusEnv(board_size=board_size, num_players=2, testing_mode=False)
         self.func = func # : (env, obs, action) -> float
+        super().__init__(name=name, *args, **kwargs)
 
     def get_action(self, env, obs):
         self.env.restore_state(env.capture_state())
@@ -41,5 +43,5 @@ class HeuristicAgent(Agent):
             print(max_value)
             raise e
 
-        action = random.choice(best_action_ids)
+        action = self.rng.choice(best_action_ids)
         return action

@@ -1,10 +1,12 @@
 from datetime import datetime
-from typing import Type
-from proj_config import MODEL_DIR
-import torch
 import os
 import json
+from datetime import datetime
+from typing import Optional, Type
 
+import torch
+
+from proj_config import MODEL_DIR
 from gymnasium_env.envs import BlokusAction, BlokusEnv
 from gymnasium.core import ObsType, ActType
 
@@ -17,15 +19,18 @@ class QNetworkAgent(Agent):
         device: str,
         board_size: int,
         model_class: Type[BaseArch],
-        model_folder: str | None = None,
-        dir: str | None = None,
+        model_folder: Optional[str] = None,
+        dir: Optional[str] = None,
     ):
         """
-        Initializes the DQN agent.
+        Initializes the QNetworkAgent.
+
         Args:
+            device (str): Device to run the model on (e.g., 'cpu' or 'cuda').
             board_size (int): Size of the Blokus board.
-            model_class (BaseArch): Class for the neural network model.
-            dir (str): Directory path for saving/loading the model.
+            model_class (Type[BaseArch]): Neural network architecture class.
+            model_folder (Optional[str], optional): Folder name for saving the model. If None, a timestamped folder is generated.
+            dir (Optional[str], optional): Full directory path for saving/loading the model. If None, it is constructed automatically.
         """
         super().__init__(name="DQNAgent")
         # Models

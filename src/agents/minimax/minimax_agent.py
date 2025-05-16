@@ -7,6 +7,7 @@ import numpy as np
 import os
 from ..agent import Agent
 from src.utils import encode_board_string, decode_board_string
+from proj_config import CACHE_DIR
 
 class MiniMaxAgent(Agent):
     def __init__(
@@ -15,9 +16,10 @@ class MiniMaxAgent(Agent):
         board_size: int, 
         name: str = "Agent", 
         depth: int = 100, 
-        cache_dir: str | None = None
+        cache_dir: str = None,
+        cache_folder: str = None,
+        *args, **kwargs
     ):
-        self.name = name
         self.depth = depth
         self.board_size = board_size
         self.env = gym.make(
@@ -52,7 +54,7 @@ class MiniMaxAgent(Agent):
             }
         # print(best_value)
         # print(encoded_board)
-        return random.choice(good_action_ids)
+        return self.rng.choice(good_action_ids)
     
     def save_cache(self):
         if not self.use_cache:

@@ -6,9 +6,8 @@ from gymnasium_env import BlokusEnv
 
 from .agent import Agent
 class RandomAgent(Agent):
-    def __init__(self, name: str = "RandomAgent", seed: Optional[int] = None):
-        super().__init__(name=name)
-        self.rng = random.Random(seed) 
+    def __init__(self, name: str = "RandomAgent", *args, **kwargs):
+        super().__init__(name=name, *args, **kwargs)
 
     def get_action(self, env: BlokusEnv, obs: ObsType) -> ActType:
         actions = obs["possible_actions"]
