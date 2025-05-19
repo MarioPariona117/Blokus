@@ -8,7 +8,7 @@ from src.agents import Agent
 from src.utils import encode_board_string, decode_board_string
 from proj_config import MODEL_DIR
 
-class QL_Agent(Agent):
+class TabularQLearningAgent(Agent):
     def __init__(
             self, 
             board_size,

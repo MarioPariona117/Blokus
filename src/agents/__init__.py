@@ -6,5 +6,5 @@ from .mixed_agent import MixedAgent
 from .minimax.minimax_agent import MiniMaxAgent
 from .ab_pruning.ab_agent import ABPruningAgent
 from .heuristic.heuristic_agent import HeuristicAgent
-from .q_learning.ql_agent import QL_Agent
+from .q_learning.ql_agent import TabularQLearningAgent
 from .qnetwork.qnetwork_agent import QNetworkAgent

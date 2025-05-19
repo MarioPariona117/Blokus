@@ -8,6 +8,8 @@ import pickle
 import time
 import os
 
+from proj_config import CACHE_DIR
+
 from src.utils import encode_board_bytes, decode_board_bytes, time_function
 from gymnasium_env import BlokusEnv, BlokusAction, BlokusPieceManager
 from ..minimax.minimax_agent import MiniMaxAgent
@@ -26,7 +28,7 @@ class ABPruningAgent(MiniMaxAgent):
         name: str = "ABPruning", 
         depth: int = -1, 
         heuristic: Callable[[BlokusEnv, ObsType, BlokusAction], float | Tuple[float, float]] = lambda env, obs, action: 0.0,
-        testing_mode: Tuple[bool, int | None] = (False, None)
+        *args, **kwargs
     ):
         """
         Initializes the ABPruningAgent.
@@ -40,21 +42,15 @@ class ABPruningAgent(MiniMaxAgent):
             heuristic (Callable[[BlokusEnv, ObsType, BlokusAction], float | Tuple[float, float]], optional): 
             A function to sort the actions based on a heuristic. It takes an environment, an observation, 
             and an action as input. Defaults to my_heu.
-            testing_mode (Tuple[bool, int | None], optional): A tuple indicating whether testing mode is enabled 
             and the depth difference for testing. Defaults to (False, None).
         """
-        self.name = name
         assert depth >= -1, "Depth must be greater than or equal to -1"
         self.depth = depth if depth >= 0 else ABPruningAgent.MAX_DEPTH
-        self.board_size = board_size
-        self.env: BlokusEnv = gym.make('gymnasium_env/Blokus-v0', board_size=board_size, num_players=2, disable_env_checker=True, testing_mode=False)
-        self.env = self.env.unwrapped
-        self.env.order_enforce = False
-        self.use_cache = use_cache
+        super().__init__(board_size=board_size, name=name, depth=self.depth, use_cache=use_cache, *args, **kwargs)
         if self.use_cache:
             if cache_dir is None:
-                cache_dir = os.path.join(os.path.dirname(__file__), "cache", "alpha_beta")
-            self.cache_path = os.path.join(cache_dir, f"ab_depth{self.depth}_bz{board_size}_bytes.pkl")
+                cache_dir = os.path.join(CACHE_DIR, "alpha_beta")
+            self.cache_path = os.path.join(cache_dir, f"ab_depth{depth}_bz{self.board_size}_bytes/cache.pkl")
 
             self.cache_manager = CacheManager(cache_path=self.cache_path, time_update=120, time_threshold=1200, size_threshold=1e8)
         else:
@@ -64,11 +60,8 @@ class ABPruningAgent(MiniMaxAgent):
         self.num_pruned = 0
         self.visited_states = 0
         self.log = []
-        self.testing_mode = testing_mode[0]
-        self.depth_diff_test = testing_mode[1]
         self.counter = 0
         self.if_print = 1
-        # super().__init__(board_size=board_size, name=name, depth=self.depth, use_cache=use_cache, cache_dir=cache_path)
         # wandb.init(project="ABPruningAgent", config={"board_size": board_size})
 
     # @time_function
@@ -112,17 +105,7 @@ class ABPruningAgent(MiniMaxAgent):
                 action=action, 
             ))
         )
-        if self.testing_mode:
-            if depth >= self.depth - self.depth_diff_test:
-                sorted_actions = tqdm(sorted_actions)
-
         for action in sorted_actions:
-            if self.testing_mode:
-                if depth >= self.depth - self.depth_diff_test:
-                    sorted_actions.set_description(f"BValue: {best_value}, BAction: {best_action}, CAction: {action})")
-                    # mine(self.env, obs, action, print_=True)
-                    sorted_actions.refresh()
-                    
             psz = action.piece.size
             new_obs, new_reward, term, trunc, _ = self.env.step(action.action_id)
             assert psz == new_reward

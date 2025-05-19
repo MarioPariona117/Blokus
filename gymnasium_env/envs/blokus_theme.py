@@ -17,7 +17,7 @@ class BlokusTheme:
                 self.background_color, # Default
                 (192, 0, 0),     # Red
                 (66, 132, 243),     # Blue
-                (26, 127, 55),      # Green
+                (34, 139, 34),      # Green
                 (189, 127, 0)   # Yellow
             ]
         else: 

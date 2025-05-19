@@ -1,13 +1,13 @@
-import gymnasium as gym
-import gymnasium_env
-from gymnasium_env.envs import BlokusAction
-import random
+import os
 import pickle
 import numpy as np
-import os
-from ..agent import Agent
-from src.utils import encode_board_string, decode_board_string
+
+import gymnasium as gym
+from gymnasium_env import BlokusAction, BlokusEnv
+
 from proj_config import CACHE_DIR
+from src.agents import Agent
+from src.utils import encode_board_string, decode_board_string
 
 class MiniMaxAgent(Agent):
     def __init__(
@@ -22,28 +22,42 @@ class MiniMaxAgent(Agent):
     ):
         self.depth = depth
         self.board_size = board_size
-        self.env = gym.make(
-            'gymnasium_env/Blokus-v0', 
-            board_size=board_size, 
-            num_players=2, 
-            render_mode='console', 
-            disable_env_checker=True, 
+        # self.env = gym.make(
+        #     'gymnasium_env/Blokus-v0', 
+        #     board_size=board_size, 
+        #     num_players=2, 
+        #     render_mode='console', 
+        #     disable_env_checker=True, 
+        # )
+        self.env = BlokusEnv(
+            board_size=board_size,
+            num_players=2,
+            render_mode='console',
         )
-        self.env = self.env.unwrapped
-        self.env.order_enforce = False
         self.use_cache = use_cache
+        cache_dir = os.path.join(CACHE_DIR, "minimax") if cache_dir is None else cache_dir
         if self.use_cache:
             if cache_dir is None:
-                cache_dir = os.path.join(os.path.dirname(__file__), "cache", "minimax")
-            self.cache_path = os.path.join(cache_dir, f"minimax_depth{self.depth}_bz{board_size}.pkl")
+                if model_folder is None:
+                    model_folder = self.generate_model_folder()
+
+                self.cache_dir = os.path.join(
+                    CACHE_DIR,
+                    self.__class__.__name__,
+                    f"board_{self.board_size}",
+                    f"depth_{self.depth}",
+                )
+            else: 
+                self.cache_dir = cache_dir
+            self.cache_path = os.path.join(cache_dir, "cache.pkl")
             self.load_cache()
-        super().__init__(name=name)
+        super().__init__(name=name, *args, **kwargs)
         self._trainable = False
 
     def get_action(self, env, obs):
         encoded_board = encode_board_string(obs["state"])
         if self.use_cache and encoded_board in self.cache:
-            return random.choice(self.cache[encoded_board]["actions"])
+            return self.rng.choice(self.cache[encoded_board]["actions"])
         state = env.capture_state()
         self.env.restore_state(state)
         good_action_ids, best_value = self.minimax(obs, self.depth)
@@ -64,7 +78,9 @@ class MiniMaxAgent(Agent):
                 pickle.dump(self.cache, file)
 
     def load_cache(self):
-        if self.use_cache and self.cache_path is not None and os.path.exists(self.cache_path):
+        if not self.use_cache:
+            return
+        if self.cache_path is not None and os.path.exists(self.cache_path):
             with open(self.cache_path, 'rb') as file:
                 self.cache = pickle.load(file)
             print(f"Cache loaded for MiniMaxAgent with depth {self.depth} and board size {self.board_size}")
@@ -103,6 +119,7 @@ class MiniMaxAgent(Agent):
                 value[idx] = value1
                 if value1 > best_value:
                     best_value = value1
+                    
         if depth == self.depth:
             good_action_ids = [action.action_id for action in actions[value == best_value]]
         else:
