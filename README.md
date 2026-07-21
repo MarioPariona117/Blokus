@@ -17,7 +17,7 @@ learning is feasible).
 - 🤖 **Deep Q-Network (10×10)** reached **≥80%** vs a fixed heuristic opponent — on a board with a game tree **> 10³²**, roughly **10¹⁷× larger** than 7×7 and far beyond exhaustive search.
 - 🔬 Two novel contributions: a **corner-cell action-precomputation** scheme and a **dual-Q-value training method** for learning values under optimal opponent play.
 
-📄 **Full dissertation** (source + PDF): [`MarioPariona117/LaTeX`](https://github.com/MarioPariona117/LaTeX) → `Blokus_/2327D.pdf`
+📄 **[Read the full dissertation (PDF)](dissertation.pdf)** — LaTeX source also available in [`MarioPariona117/LaTeX`](https://github.com/MarioPariona117/LaTeX).
 
 ## Why it's interesting
 
